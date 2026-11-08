@@ -23,9 +23,15 @@ Needs Node.js 20+ and PostgreSQL 14+.
     cp .env.example .env            # fill in the values; comments must be on their own lines
     npm run migrate                 # creates/updates the database and sets the app's DB password
     npm run setup-demo              # once: creates the JADA team (Jo, Kim, Ravi, Sam) for sign-in
-    npm start                       # open http://localhost:3000
+    npm start                       # open http://localhost:3000 (landing page; sign in at /signin)
 
-Sign-in is a push button: pick an account, or "Set up a new firm". There are no passwords and
+The public landing page is at `/`; the shared design system is `public/design-system.css`, with a
+reference page at `/design-system` (demo mode only). Firm leads land in the workspace at `/app`
+(overview, firm profile and technology inventory, discovery, evidence, opportunities,
+implementation, impact, settings). Each discovery has a workspace at `/app/discovery/:id` with
+overview, firm context, interviews, journey, evidence, findings (with corrections and history) and a
+completion review; reports and priority approval are on `/app/opportunities`. The earlier `/firm`
+pages, including `/firm/discoveries/:id`, still work but are no longer linked. Sign-in is a push button: pick an account, or "Set up a new firm". There are no passwords and
 no emails. The firm lead adds people and copies each person's interview link to share however
 they like; a link can't be shown twice (only a hash is stored), but "Make a new link" replaces it
 and switches the old one off. Follow-up questions work the same way. Push-button sign-in refuses
@@ -144,7 +150,8 @@ regulatory checks and trusted sources (title, reference, publisher, date, sectio
 - Neither the report nor the pack is written by the AI. Both are assembled from stored findings,
   the playbook card and the JADA template; anything not covered says so instead of being filled in.
 - Reports are immutable and versioned (database-enforced), so v1 is the baseline for later
-  before/after comparison. Payback stays "not calculated" until implementation cost is known.
+  before/after comparison. Payback stays "not calculated" until implementation cost and a
+  firm-stated cash saving are both known; the report then uses the business case's own figure and reason.
 - A pack only exists for an item classified "automate" that the firm lead chose to build.
   Re-approving reuses the existing pack.
 - The two-week build is confirmed only if every check in brief §7 passes, including a TESTED
@@ -152,6 +159,72 @@ regulatory checks and trusted sources (title, reference, publisher, date, sectio
   "needs changes". JADA engineering flips `tested` in src/knowledge/templates.ts once it is.
 - JADA staff see only the discoveries they are assigned to in jada_assignments (row-level
   security, tested); every other firm stays invisible to them. Reviews are append-only.
+
+## Opportunity intelligence (Phase 4)
+`/app/opportunities/:discoveryId` is the firm lead's dashboard; `/app/opportunities/:discoveryId/:findingId`
+is one opportunity. Everything is computed by fixed rules from discovery (no AI call):
+`src/analysis/opportunityAssessment.ts`, `src/engine/priority.ts`, `src/engine/businessCase.ts`.
+- **Four classifications** (overhaul, fix, automate, keep human). Automate also says whether the
+  JADA template is conventional or AI-assisted; with no template it says "not yet assessed".
+- **Gates before score.** Keep human, unclassified, no firm-specific evidence and regulated-stage
+  changes needing compliance review are never ranked, however large the impact. One account only,
+  or not yet validated, is ranked but cannot go to engineering. The existing 0–100 score is unchanged;
+  bands are High ≥ 65, Medium ≥ 45. Value, feasibility, confidence and risk are shown separately.
+- **Business case** keeps four values apart: time recovered (capacity, never called a saving), cash
+  savings (only what the firm states it will stop spending, with a basis), capacity (needs the firm's
+  hours per case) and revenue (needs confirmed demand). Every input shows its source; payback is
+  calculated only from a known implementation cost and a stated cash saving. Firm inputs go through
+  the audited corrections endpoint.
+- **Industry hypotheses** (playbook cards nobody raised) are listed separately and never ranked.
+- **Review**: approve (only when validated and not gated), challenge or reject (reason required),
+  reopen. Stored as `corrections` rows (`field = 'opportunity_decision'`) and audited as
+  `opportunity.<decision>`. No schema change.
+- **Hand-over to JADA engineering review**: an approved, ungated opportunity is sent with a brief
+  (problem, evidence summary, classification, recommended outcome, expected impact, dependencies,
+  risks and controls, open questions, proposed success measures), snapshotted in the audit trail and
+  downloadable as Markdown. Automate items with a template also get an implementation pack through
+  the existing approval flow. Status reads "Awaiting JADA engineering review"; nothing is built.
+- API: `GET /api/firm/discoveries/:id/opportunities`, `POST …/opportunities/:pid/decision`,
+  `POST …/opportunities/:pid/engineering-review`, `GET …/opportunities/:pid/brief.md`.
+
+## Engineering workflow with JADA (Phase 5)
+builda+ discovers, assesses and recommends; JADA reviews, designs and implements; builda+ then measures.
+Code: `src/implementation/engineering.ts`, `src/knowledge/solutionTemplates.ts`, `public/engineering.js`.
+- **Submissions:** any approved, ungated opportunity (fix, overhaul or automate) can be sent. Keep human,
+  insufficient evidence, regulated-stage items held for compliance review, and single-account items can't.
+  Each submission carries a snapshot brief (problem, evidence, what the firm validated, uncertainties,
+  business case with sources, privacy-filtered quotes). Automate items with a template also keep their pack.
+- **Bulk approval:** the older endpoint now applies exactly the single-decision rules (validated, no
+  blocking gate), is all-or-nothing, and records each approval as its own audited decision. The bulk UI
+  is retired; priorities are approved one at a time.
+- **JADA workspace** (`/jada/engineering`, engineers sign in here): queue grouped as awaiting review,
+  under assessment, awaiting information, approved for implementation, in progress, completed, rejected or
+  deferred, with filters. Row-level security limits it to discoveries assigned to the engineer;
+  unassigned work shows firm name and reason only until picked up.
+- **Workflow:** start assessment → request information (the firm answers on the opportunity page) →
+  record solution design (template or custom; approach must fit the classification; AI needs a written
+  reason why conventional automation isn't enough and is refused at regulated stages) → engineering
+  approval (needs acceptance criteria, no outstanding decisions) → implementation plan (scope,
+  deliverables, access, tests, responsible parties, duration only if validated, agreed success measures)
+  → start → complete → record outcome. Reject, defer and reopen need a reason. Every step is a
+  `pack_reviews` row plus an `engineering.<action>` audit entry; no schema change.
+- **Templates** state design review, validation and any activation gate separately; none is
+  production-ready today. No template fits → custom engineering review.
+- **Two-week offer** is shown only when every condition holds (automate, tested template, plan with
+  confirmed access, no unresolved dependencies, checklist passed). Otherwise the reasons are listed.
+- **Outcome:** success is judged only against agreed measures with targets; completion alone reads
+  "not yet measured".
+- **Outlook:** the rev 2.1 design is a reviewed template gated on the spike (`OUTLOOK_SPIKE_GATE`,
+  status `not_run`). Implementation may start (Microsoft-independent build), but activating live access
+  and completing are refused until the gate passes. builda+ contains no Microsoft Graph client (tested).
+- Scoring review: `docs/engineering/scoring-review.md`.
+
+## Integration and pilot readiness (Phase 6)
+Full findings, the readiness assessment and the recommended pilot scope: `docs/pilot-readiness-report.md`.
+In short: the demonstration journey works end to end and isolation is verified, but production sign-in,
+database-function identity, retention/deletion and approved knowledge are open gates. Older `/firm` pages
+now redirect to the workspace; engineering routes require the `engineer` role; pick-up only accepts
+discoveries waiting in the queue; a new discovery starts from the firm's latest profile.
 
 ## Push-button sign-in and the JADA queue
 - `/` lists firm leads and JADA staff as buttons, plus "Set up a new firm". `/signout` signs out.

@@ -1,7 +1,8 @@
 import { STAGES, type Classification, type StageId } from '../domain/journey';
 import type { ConfidenceOrInsufficient } from '../engine/confidence';
 import { calculateImpact, type ImpactResult } from '../engine/impact';
-import { DEFAULT_SCORING_CONFIG, explainRanking, rankOpportunities, type OpportunityInput, type ScoringConfig } from '../engine/scoring';
+import { DEFAULT_SCORING_CONFIG, explainRanking, rankOpportunities, scoreDimensions, type OpportunityInput, type ScoringConfig } from '../engine/scoring';
+import { businessCase, type BusinessCase, type CaseInput } from '../engine/businessCase';
 import { templateFor, type AutomationTemplate } from '../knowledge/templates';
 import type { FirmProfile } from '../firm/profile';
 
@@ -12,7 +13,13 @@ export interface PainPointForScoring {
   classification: Classification | null;
   confidence: ConfidenceOrInsufficient;
   volume: number | null; minutes: number | null;                       // consolidated medians
-  overrides: { monthlyVolume?: number | null; minutesPerOccurrence?: number | null; reductionPct?: number | null };
+  volumeN?: number; minutesN?: number;                                   // how many people gave each figure
+  overrides: {
+    monthlyVolume?: number | null; minutesPerOccurrence?: number | null; reductionPct?: number | null;
+    // Phase 4 business-case inputs, supplied by the firm through audited corrections.
+    implementationCostGBP?: number | null; monthlyCashSavingGBP?: number | null; cashSavingBasis?: string | null;
+    staffHoursPerCase?: number | null; revenuePerCaseGBP?: number | null; demandConfirmed?: boolean | null;
+  };
   conversionAssumptions: string[];
   requiresComplianceReview: boolean;
 }
@@ -21,7 +28,7 @@ export interface TwoWeekPrecheck { status: 'blocked' | 'provisional'; blockers: 
 
 export interface BuiltOpportunity {
   painPointId: string;
-  impact: ImpactResult;
+  impact: ImpactResult & { businessCase: BusinessCase };
   assumptions: string[];
   score: number | null;
   rank: number | null;
@@ -64,7 +71,21 @@ export function buildOpportunities(pps: PainPointForScoring[], profile: FirmProf
     }
     const hourly = profile?.loadedHourlyCostGBP ?? null;
     if (hourly !== null) assumptions.push(`Labour cost of £${hourly}/hour supplied by the firm`);
-    const impact = calculateImpact({ monthlyVolume: volume, minutesPerOccurrence: minutes, reductionPct, loadedHourlyCostGBP: hourly, implementationCostGBP: null });
+    const o = pp.overrides;
+    const reported = (n: number | undefined, x: number | null): CaseInput => ({ value: x, source: x === null ? null : 'employee_reported', note: n ? `middle of ${n} ${n === 1 ? 'account' : 'accounts'}` : undefined });
+    const firm = (x: number | null | undefined, note?: string): CaseInput => ({ value: x ?? null, source: x === null || x === undefined ? null : 'firm_provided', note });
+    const bc = businessCase({
+      monthlyVolume: o.monthlyVolume !== undefined ? firm(o.monthlyVolume, 'corrected by the firm lead') : reported(pp.volumeN, pp.volume),
+      minutesPerOccurrence: o.minutesPerOccurrence !== undefined ? firm(o.minutesPerOccurrence, 'corrected by the firm lead') : reported(pp.minutesN, pp.minutes),
+      reductionPct: o.reductionPct !== undefined && o.reductionPct !== null ? firm(o.reductionPct, 'set by the firm lead')
+        : template ? { value: template.expectedReductionPct, source: 'assumption', note: template.reductionBasis } : { value: null, source: null },
+      loadedHourlyCostGBP: firm(hourly, 'firm profile'),
+      implementationCostGBP: firm(o.implementationCostGBP), monthlyCashSavingGBP: firm(o.monthlyCashSavingGBP, o.cashSavingBasis ?? undefined),
+      staffHoursPerCase: firm(o.staffHoursPerCase), revenuePerCaseGBP: firm(o.revenuePerCaseGBP), demandConfirmed: o.demandConfirmed === true,
+    });
+    // Payback is only ever calculated against cash the firm can actually save (never against recovered time).
+    const impact = { ...calculateImpact({ monthlyVolume: volume, minutesPerOccurrence: minutes, reductionPct, loadedHourlyCostGBP: hourly, implementationCostGBP: null }),
+      paybackMonths: bc.payback.months, businessCase: bc };
     const input: OpportunityInput | null = pp.classification ? {
       id: pp.id, title: pp.title, stageId: pp.stageId, classification: pp.classification, impact, monthlyVolume: volume,
       confidence: pp.confidence, templateAvailable: !!template?.tested, complexity: template?.typicalComplexity ?? null,
@@ -72,7 +93,10 @@ export function buildOpportunities(pps: PainPointForScoring[], profile: FirmProf
     return { pp, template, assumptions, impact, input };
   });
 
-  const { ranked, excluded } = rankOpportunities(prepared.flatMap((p) => (p.input ? [p.input] : [])), cfg);
+  // A regulatory constraint is never outweighed by impact: items at regulated stages that would change the
+  // work are held out of the ranking until compliance review (keep-human items are excluded by the engine).
+  const held = new Set(prepared.filter((p) => p.input && p.pp.requiresComplianceReview && p.pp.classification !== 'keep_human').map((p) => p.pp.id));
+  const { ranked, excluded } = rankOpportunities(prepared.flatMap((p) => (p.input && !held.has(p.pp.id) ? [p.input] : [])), cfg);
   return prepared.map((p) => {
     const idx = ranked.findIndex((r) => r.input.id === p.pp.id);
     const r = ranked[idx];
@@ -82,10 +106,11 @@ export function buildOpportunities(pps: PainPointForScoring[], profile: FirmProf
       assumptions: p.assumptions,
       score: r?.total ?? null,
       rank: r?.rank ?? null,
-      breakdown: r?.dimensions ?? null,
+      breakdown: r?.dimensions ?? (p.input ? scoreDimensions(p.input) : null),
       explanation: r && ranked[idx + 1] ? explainRanking(r, ranked[idx + 1]!, cfg) : [],
       twoWeek: precheckTwoWeek(p.pp, p.template),
-      excludedReason: r ? null : (excluded.find((e) => e.id === p.pp.id)?.reason ?? 'Not yet classified'),
+      excludedReason: r ? null : held.has(p.pp.id) ? 'Involves regulated judgement: held out of the ranking until a compliance review'
+        : (excluded.find((e) => e.id === p.pp.id)?.reason ?? 'Not yet classified'),
     };
   });
 }

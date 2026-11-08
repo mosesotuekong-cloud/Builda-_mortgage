@@ -1,0 +1,26 @@
+/* Layout for the internal design-system reference page only. */
+.dsp-section { display: grid; gap: var(--ds-space-5); padding-block: var(--ds-space-8); border-bottom: 1px solid var(--ds-border); }
+.dsp-section > .ds-h4 { margin-top: var(--ds-space-4); }
+.dsp-swatches { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: var(--ds-space-3); font-size: var(--ds-text-sm); }
+.dsp-swatches li { display: flex; align-items: center; gap: var(--ds-space-3); }
+.dsp-swatch { width: 2.25rem; height: 2.25rem; border-radius: var(--ds-radius-md); border: 1px solid var(--ds-border); flex: none; }
+.dsp-swatch--brand { background: var(--ds-brand); }
+.dsp-swatch--accent { background: var(--ds-accent); }
+.dsp-swatch--bg { background: var(--ds-bg); }
+.dsp-swatch--sunken { background: var(--ds-surface-sunken); }
+.dsp-swatch--muted { background: var(--ds-text-muted); }
+.dsp-swatch--warning { background: var(--ds-warning); }
+.dsp-swatch--danger { background: var(--ds-danger); }
+.dsp-swatch--info { background: var(--ds-info); }
+.dsp-spacing { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--ds-space-2); font-size: var(--ds-text-sm); }
+.dsp-spacing li { display: flex; align-items: center; gap: var(--ds-space-3); }
+.dsp-space { display: inline-block; height: 0.75rem; background: var(--ds-accent); border-radius: 2px; }
+.dsp-space--2 { width: var(--ds-space-2); }
+.dsp-space--4 { width: var(--ds-space-4); }
+.dsp-space--6 { width: var(--ds-space-6); }
+.dsp-space--8 { width: var(--ds-space-8); }
+.dsp-space--12 { width: var(--ds-space-12); }
+.dsp-span { grid-column: 1 / -1; }
+.dsp-gap { gap: var(--ds-space-5); }
+.dsp-card { max-width: 32rem; }
+.ds-base code { font-family: var(--ds-font-mono); font-size: 0.85em; background: var(--ds-surface-sunken); padding: 0.05rem 0.3rem; border-radius: var(--ds-radius-sm); }

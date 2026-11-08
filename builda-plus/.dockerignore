@@ -1,0 +1,11 @@
+# Never put secrets or local files into the image.
+.env
+.env.*
+!.env.example
+node_modules
+tests
+docs
+coverage
+dist
+*.log
+.git

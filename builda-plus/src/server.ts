@@ -29,6 +29,15 @@ const consent = {
 };
 assertConsentConfigReady({ ...consent, firmName: '' });
 
+// builda+ still uses the demo sign-in (pick any account, no password). That's fine on this computer,
+// but anywhere else it must sit behind the private-demo password. Refuse to start otherwise.
+const accessPassword = process.env.DEMO_ACCESS_PASSWORD?.trim() || null;
+const onThisComputer = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(appBaseUrl).hostname);
+if (!onThisComputer && !accessPassword) {
+  throw new Error(`APP_BASE_URL is ${appBaseUrl}, which isn't this computer. builda+ still uses the demo sign-in, so set DEMO_ACCESS_PASSWORD (at least 12 characters) before putting it online.`);
+}
+if (accessPassword && accessPassword.length < 12) throw new Error('DEMO_ACCESS_PASSWORD must be at least 12 characters.');
+
 const db = createPool();
 // No email for now: the firm lead copies each person's link and shares it themselves.
 const mailer = null;
@@ -48,6 +57,7 @@ const app = buildApp({
   interviews: new InterviewService(db, { providerFor, playbook: SEED_PLAYBOOK, playbookFor }),
   knowledge,
   signin: new SigninService(db, firms),
+  guide: { llm: model },
   participants: new ParticipantAccessService(db),
   decisions: new DecisionService(db, { analysis, firms, playbook: SEED_PLAYBOOK }),
   jada: new JadaService(db),
@@ -56,6 +66,7 @@ const app = buildApp({
   sessionSecret,
   consent,
   secureCookies: appBaseUrl.startsWith('https://'),
+  ...(accessPassword ? { accessGate: { password: accessPassword } } : {}),
 });
 
 const port = Number(env('PORT', '3000'));

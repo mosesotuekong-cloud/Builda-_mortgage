@@ -10,7 +10,10 @@ import { classifyPainPoint, proposeKeyMerges } from './classify';
 import { buildOpportunities, type PainPointForScoring } from './opportunities';
 import { FirmProfileSchema } from '../firm/profile';
 import { DEFAULT_SCORING_CONFIG } from '../engine/scoring';
-import type { ConfidenceOrInsufficient } from '../engine/confidence';
+import { assessDimensions, type ConfidenceOrInsufficient } from '../engine/confidence';
+import { templateFor } from '../knowledge/templates';
+import { approvalBlockers, assessOpportunities } from './opportunityAssessment';
+import { PRIORITY_BANDS } from '../engine/priority';
 import { startFollowUp } from '../interview/orchestrator';
 import type { Mailer } from '../firm/mailer';
 import { hashToken, newInvitationToken } from '../http/tokens';
@@ -33,11 +36,31 @@ export const CorrectionSchema = z.discriminatedUnion('field', [
   z.object({ field: z.literal('monthlyVolume'), value: z.number().min(0).max(100000).nullable(), reason: z.string().min(3).max(1000) }),
   z.object({ field: z.literal('minutesPerOccurrence'), value: z.number().min(0).max(10000).nullable(), reason: z.string().min(3).max(1000) }),
   z.object({ field: z.literal('reductionPct'), value: z.number().min(0).max(1).nullable(), reason: z.string().min(3).max(1000) }),
+  // Phase 4 business-case inputs. Supplied by the firm; each one is audited like any other correction.
+  z.object({ field: z.literal('implementationCostGBP'), value: z.number().min(0).max(10_000_000).nullable(), reason: z.string().min(3).max(1000) }),
+  z.object({ field: z.literal('monthlyCashSavingGBP'), value: z.number().min(0).max(1_000_000).nullable(), reason: z.string().min(10).max(1000) }),
+  z.object({ field: z.literal('staffHoursPerCase'), value: z.number().gt(0).max(500).nullable(), reason: z.string().min(3).max(1000) }),
+  z.object({ field: z.literal('revenuePerCaseGBP'), value: z.number().min(0).max(1_000_000).nullable(), reason: z.string().min(3).max(1000) }),
+  z.object({ field: z.literal('demandConfirmed'), value: z.boolean(), reason: z.string().min(3).max(1000) }),
   z.object({ field: z.literal('validated'), value: z.boolean(), reason: z.string().max(1000).default('') }),
+  // A note added to the finding's record. It changes no figure and no confidence.
+  z.object({ field: z.literal('clarification'), value: z.string().trim().min(3).max(2000), reason: z.string().max(1000).default('Clarification') }),
 ]);
+export const OpportunityDecisionSchema = z.object({
+  decision: z.enum(['approved', 'challenged', 'rejected', 'reopened']),
+  reason: z.string().trim().max(1000).default(''),
+}).refine((d) => !['challenged', 'rejected'].includes(d.decision) || d.reason.length >= 3, { message: 'Say why', path: ['reason'] });
+export const EvidenceReviewSchema = z.object({
+  status: z.enum(['validated', 'disputed', 'unreviewed']),
+  reason: z.string().trim().max(1000).default(''),
+}).refine((r) => r.status !== 'disputed' || r.reason.length >= 3, { message: 'Say why this evidence is disputed', path: ['reason'] });
 export type Correction = z.infer<typeof CorrectionSchema>;
 
 export type Playback = Awaited<ReturnType<AnalysisService["playback"]>>;
+export type DiscoveryWorkspace = Awaited<ReturnType<AnalysisService["discoveryWorkspace"]>>;
+export type OpportunityIntelligence = Awaited<ReturnType<AnalysisService["opportunityAssessments"]>>;
+// Verbatim quotes are shown to the firm only when at least this many people in the role contributed.
+export const QUOTE_MIN_GROUP = 3;
 
 export class AnalysisService {
   constructor(private db: Db, private deps: { providerFor: (ctx: { orgId: string; discoveryId: string }) => LLMProvider; playbook: Playbook; playbookFor?: (ctx: FirmContext, discoveryId: string) => Promise<Playbook>; mailer?: Mailer | null; appBaseUrl: string }) {}
@@ -46,11 +69,17 @@ export class AnalysisService {
     return this.deps.playbookFor ? this.deps.playbookFor(ctx, discoveryId) : Promise.resolve(this.deps.playbook);
   }
 
-  private async loadEvidence(tx: Tx, discoveryId: string): Promise<AnalysisEvidence[]> {
+  // Evidence the firm lead has disputed is left out of analysis and confidence until they change their mind
+  // (the dispute and its reason stay in the corrections history).
+  private async loadEvidence(tx: Tx, discoveryId: string, opts: { includeDisputed?: boolean } = {}): Promise<AnalysisEvidence[]> {
     const r = await tx.query(
       `select e.*, p.role as participant_role from evidence_records e
          left join participants p on p.discovery_id = e.discovery_id and p.pseudonym = e.participant_pseudonym
-        where e.discovery_id = $1 order by e.created_at`, [discoveryId]);
+        where e.discovery_id = $1
+          and ($2 or coalesce((select c.new_value #>> '{}' from corrections c
+                                 where c.entity_type = 'evidence_record' and c.entity_id = e.id and c.field = 'review'
+                                 order by c.created_at desc limit 1), '') <> 'disputed')
+        order by e.created_at`, [discoveryId, !!opts.includeDisputed]);
     return r.rows.map((x) => ({
       id: x.id, participantRef: x.participant_pseudonym ?? 'firm', role: (x.participant_role ?? x.responsible_role) as Role,
       source: x.source, painPointKey: x.pain_point_key, stageId: x.stage_id, taskDescription: x.task_description,
@@ -79,7 +108,10 @@ export class AnalysisService {
     const playbook = await this.playbookFor(ctx, discoveryId);
     const playbookKeys = playbook.cards.map((c) => c.id);
     const keys = [...new Set(evidence.map((e) => e.painPointKey))];
-    const proposed = await proposeKeyMerges(llm, keys.map((k) => ({ key: k, descriptions: evidence.filter((e) => e.painPointKey === k).map((e) => e.taskDescription) })), playbookKeys);
+    // Merging is an AI suggestion. If it isn't available, analysis carries on with keys unmerged rather than failing.
+    let mergeUnavailable = false;
+    const proposed = await proposeKeyMerges(llm, keys.map((k) => ({ key: k, descriptions: evidence.filter((e) => e.painPointKey === k).map((e) => e.taskDescription) })), playbookKeys)
+      .catch(() => { mergeUnavailable = true; return []; });
     const merged = applyKeyMerges(evidence, proposed, playbook);
     const findings = consolidate(merged.evidence, { playbook, firmLeadInterviewed });
 
@@ -118,7 +150,7 @@ export class AnalysisService {
       await tx.query('insert into analysis_runs (org_id, discovery_id, findings, key_merges, playbook_version) values ($1,$2,$3,$4,$5)',
         [ctx.orgId, discoveryId, JSON.stringify({ ...findingsForStorage(findings), firmLeadInterviewed }), JSON.stringify(merged.applied), playbook.version]);
       await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: 'analysis.run',
-        metadata: { painPoints: findings.painPoints.length, merges: merged.applied.length, classified: [...classifications.values()].filter(Boolean).length } }]);
+        metadata: { painPoints: findings.painPoints.length, merges: merged.applied.length, mergeUnavailable, classified: [...classifications.values()].filter(Boolean).length } }]);
     });
     await this.rescore(ctx, discoveryId);
     return findings;
@@ -135,6 +167,7 @@ export class AnalysisService {
         id: x.id, key: x.key, title: x.title, stageId: x.stage_id, classification: x.classification,
         confidence: x.confidence as ConfidenceOrInsufficient,
         volume: x.evidence_summary?.volume?.value ?? null, minutes: x.evidence_summary?.minutes?.value ?? null,
+        volumeN: x.evidence_summary?.volume?.n, minutesN: x.evidence_summary?.minutes?.n,
         overrides: x.overrides ?? {}, conversionAssumptions: x.evidence_summary?.conversionAssumptions ?? [],
         requiresComplianceReview: x.requires_compliance_review,
       }));
@@ -210,6 +243,13 @@ export class AnalysisService {
         `select p.role, coalesce((select s.status::text from interview_sessions s where s.participant_id = p.id and s.kind = 'main' order by s.started_at desc limit 1), 'not started') as status
            from participants p where p.discovery_id = $1`, [discoveryId]);
       const corrections = await tx.query('select entity_id, field, old_value, new_value, reason, created_at from corrections where discovery_id = $1 order by created_at', [discoveryId]);
+      // Small-firm privacy: verbatim quotes reach the firm (screens, report, pack) only when the role has
+      // enough contributors that a quote can't be pinned on one person. The firm lead's own words always can.
+      const groups = new Map((await tx.query(
+        `select p.role, count(distinct e.participant_pseudonym)::int as n from evidence_records e
+           join participants p on p.discovery_id = e.discovery_id and p.pseudonym = e.participant_pseudonym
+          where e.discovery_id = $1 group by p.role`, [discoveryId])).rows.map((r) => [r.role as string, r.n as number]));
+      const quotable = (role: string) => role === 'firm_lead' || (groups.get(role) ?? 0) >= QUOTE_MIN_GROUP;
 
       const painPoints = rows.rows.map((x) => ({
         id: x.id, key: x.key, title: x.title, stageId: x.stage_id as StageId, stageName: STAGES[x.stage_id as StageId].name,
@@ -220,10 +260,11 @@ export class AnalysisService {
         participantCount: x.evidence_summary?.participantCount ?? 0,
         volume: x.evidence_summary?.volume ?? null, minutes: x.evidence_summary?.minutes ?? null, overrides: x.overrides,
         disagreements: (x.evidence_summary?.disagreementsByRole ?? []).map((d: any) => ({ field: d.field, values: d.values.map((v: any) => ({ role: ROLE_LABELS[v.role as Role], value: v.value })) })),
-        quotes: (x.evidence_summary?.quotesByRole ?? []).map((q: any) => ({ role: ROLE_LABELS[q.role as Role], quote: q.quote })),
+        quotes: (x.evidence_summary?.quotesByRole ?? []).filter((q: any) => quotable(q.role)).map((q: any) => ({ role: ROLE_LABELS[q.role as Role], quote: q.quote })),
+        quotesWithheld: (x.evidence_summary?.quotesByRole ?? []).filter((q: any) => !quotable(q.role)).length as number,
         systems: (x.evidence_summary?.systems ?? []) as string[], causes: x.evidence_summary?.causes ?? [], improvements: x.evidence_summary?.improvements ?? [],
         outstandingQuestions: x.evidence_summary?.outstandingQuestions ?? [], missingMeasurements: x.evidence_summary?.missingMeasurements ?? [],
-        impact: x.impact, score: x.score === null ? null : Number(x.score), rank: x.rank, twoWeek: x.feasibility,
+        impact: x.impact, score: x.score === null ? null : Number(x.score), rank: x.rank, twoWeek: x.feasibility, breakdown: x.score_breakdown ?? null,
         assumptions: x.assumptions ?? [], explanation: x.explanation ?? [],
         corrections: corrections.rows.filter((c) => c.entity_id === x.id),
       }));
@@ -266,6 +307,9 @@ export class AnalysisService {
           oldValue = pp.stage_id;
           await tx.query('update pain_points set stage_id = $1, requires_compliance_review = $2 or requires_compliance_review, updated_at = now() where id = $3', [c.value, STAGES[c.value].regulatedJudgement, painPointId]);
           break;
+        case 'clarification':
+          oldValue = null;
+          break;
         case 'validated':
           oldValue = pp.validated_by_firm_lead;
           await tx.query('update pain_points set validated_by_firm_lead = $1, updated_at = now() where id = $2', [c.value, painPointId]);
@@ -274,6 +318,8 @@ export class AnalysisService {
           oldValue = pp.overrides?.[c.field] ?? null;
           const overrides = { ...(pp.overrides ?? {}) };
           if (c.value === null) delete overrides[c.field]; else overrides[c.field] = c.value;
+          // The firm's own explanation of which spending it can reduce travels with the figure.
+          if (c.field === 'monthlyCashSavingGBP') { if (c.value === null) delete overrides.cashSavingBasis; else overrides.cashSavingBasis = c.reason; }
           await tx.query('update pain_points set overrides = $1, updated_at = now() where id = $2', [overrides, painPointId]);
         }
       }
@@ -281,9 +327,246 @@ export class AnalysisService {
         `insert into corrections (org_id, discovery_id, entity_type, entity_id, field, old_value, new_value, reason, corrected_by)
          values ($1,$2,'pain_point',$3,$4,$5,$6,$7,$8)`,
         [ctx.orgId, discoveryId, painPointId, c.field, JSON.stringify(oldValue ?? null), JSON.stringify(c.value), c.reason, ctx.userId]);
-      await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: 'pain_point.corrected', entityType: 'pain_point', entityId: painPointId, metadata: { field: c.field } }]);
+      await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: c.field === 'clarification' ? 'pain_point.clarified' : 'pain_point.corrected', entityType: 'pain_point', entityId: painPointId, metadata: { field: c.field } }]);
     });
-    await this.rescore(ctx, discoveryId);
+    if (c.field !== 'clarification') await this.rescore(ctx, discoveryId);
+  }
+
+  // Phase 3: everything the discovery workspace shows, from existing tables. Read-only.
+  // Privacy: verbatim quotes are returned only for roles with at least QUOTE_MIN_GROUP contributors
+  // (or the firm lead's own words); otherwise the extracted observation is shown without the quote.
+  async discoveryWorkspace(ctx: FirmContext, discoveryId: string) {
+    const playbook = await this.playbookFor(ctx, discoveryId);
+    const pb = await this.playback(ctx, discoveryId);
+    return withFirmContext(this.db, ctx, async (tx) => {
+      const dr = await tx.query(
+        `select d.id, d.status, d.created_at, d.firm_profile, d.playbook_version, o.name as firm_name,
+                greatest(d.created_at, (select max(created_at) from audit_log l where l.discovery_id = d.id)) as updated_at,
+                (select max(created_at) from reports r where r.discovery_id = d.id) as reported_at
+           from discoveries d join organisations o on o.id = d.org_id where d.id = $1`, [discoveryId]);
+      const d = dr.rows[0];
+      if (!d) throw new NotFoundError('Discovery not found');
+      const raw = await this.loadEvidence(tx, discoveryId, { includeDisputed: true });
+      const kinds = new Map((await tx.query(
+        `select e.id, s.kind from evidence_records e left join interview_sessions s on s.id = e.session_id where e.discovery_id = $1`, [discoveryId])).rows.map((r) => [r.id, r.kind]));
+      const reviews = new Map((await tx.query(
+        `select distinct on (entity_id) entity_id, new_value #>> '{}' as status, reason, created_at from corrections
+          where discovery_id = $1 and entity_type = 'evidence_record' and field = 'review' order by entity_id, created_at desc`, [discoveryId])).rows
+        .map((r) => [r.entity_id, { status: r.status as string, reason: r.reason as string | null, at: r.created_at }]));
+      const history = (await tx.query(
+        `select entity_type, entity_id, field, old_value, new_value, reason, created_at from corrections where discovery_id = $1 order by created_at desc`, [discoveryId])).rows;
+      const merges = (await tx.query('select key_merges from analysis_runs where discovery_id = $1 order by created_at desc limit 1', [discoveryId])).rows[0]?.key_merges ?? [];
+      const sessions = (await tx.query(
+        `select s.kind, s.status, s.state->'coverage' as coverage from interview_sessions s where s.discovery_id = $1`, [discoveryId])).rows;
+      const people = (await tx.query(
+        `select p.id, p.display_name, p.role, p.consented_at,
+                (select s.status from interview_sessions s where s.participant_id = p.id and s.kind = 'main' order by s.started_at desc limit 1) as main_status,
+                (select count(*)::int from follow_ups f where f.participant_id = p.id) as follow_ups,
+                (select bool_or(s.status in ('in_progress','paused')) from interview_sessions s where s.participant_id = p.id and s.kind = 'follow_up') as follow_up_open,
+                exists (select 1 from invitations i where i.participant_id = p.id and i.first_used_at is not null) as opened
+           from participants p where p.discovery_id = $1 order by p.invited_at`, [discoveryId])).rows;
+
+      // Map evidence to findings through the merges the last analysis applied.
+      const merged = applyKeyMerges(raw, merges, playbook).evidence;
+      const byKey = new Map(pb.painPoints.map((p) => [p.key, p]));
+      const reviewOf = (id: string) => reviews.get(id) ?? { status: 'unreviewed', reason: null, at: null };
+      const contributors = new Map<string, Set<string>>();
+      for (const e of merged) contributors.set(e.role, (contributors.get(e.role) ?? new Set()).add(e.participantRef));
+      const quoteAllowed = (role: string) => role === 'firm_lead' || (contributors.get(role)?.size ?? 0) >= QUOTE_MIN_GROUP;
+      const SOURCE: Record<string, string> = { firm_said: 'employee_reported', operational_record: 'measured', measured_baseline: 'measured', playbook: 'industry_knowledge', assumption: 'assumption' };
+
+      const evidence = merged.map((e) => {
+        const finding = byKey.get(e.painPointKey) ?? null;
+        const allowed = quoteAllowed(e.role);
+        return {
+          id: e.id, findingId: finding?.id ?? null, findingTitle: finding?.title ?? null,
+          stageId: e.stageId, stageName: STAGES[e.stageId]?.name ?? e.stageId,
+          source: SOURCE[e.source] ?? 'assumption', role: ROLE_LABELS[e.role] ?? e.role,
+          origin: kinds.get(e.id) === 'follow_up' ? 'Follow-up interview' : e.participantRef === 'firm' ? 'Firm' : 'Interview',
+          observed: e.taskDescription, monthlyVolume: e.monthlyVolume, minutesPerOccurrence: e.minutesPerOccurrence,
+          conversionAssumptions: e.conversionAssumptions, systems: e.systems, reportedCause: e.reportedCause, potentialImprovement: e.potentialImprovement,
+          outstandingQuestions: e.outstandingQuestions,
+          quote: allowed ? e.supportingQuote : null, quoteWithheld: !allowed,
+          collectedAt: e.createdAt, review: reviewOf(e.id),
+        };
+      });
+
+      const FIELD_LABEL: Record<string, string> = { classification: 'Approach', title: 'Title', stageId: 'Stage', monthlyVolume: 'Monthly volume', minutesPerOccurrence: 'Minutes each time',
+        reductionPct: 'Share of work that could be removed', validated: 'Validated', clarification: 'Clarification', review: 'Evidence review',
+        implementationCostGBP: 'Implementation cost', monthlyCashSavingGBP: 'Spending the firm can reduce', staffHoursPerCase: 'Staff hours per case',
+        revenuePerCaseGBP: 'Revenue per case', demandConfirmed: 'Demand for more cases confirmed', opportunity_decision: 'Opportunity decision' };
+      const entry = (h: any) => ({ entityType: h.entity_type as string, entityId: h.entity_id as string, field: h.field as string, label: FIELD_LABEL[h.field] ?? h.field, oldValue: h.old_value, newValue: h.new_value, reason: h.reason as string | null, at: h.created_at });
+
+      const findings = pb.painPoints.map((p) => {
+        const items = evidence.filter((e) => e.findingId === p.id);
+        const active = merged.filter((e) => byKey.get(e.painPointKey)?.id === p.id && reviewOf(e.id).status !== 'disputed');
+        const template = p.classification === 'automate' ? templateFor(p.key) : null;
+        const reductionBasis: 'firm_lead' | 'template' | null = p.overrides.reductionPct !== undefined && p.overrides.reductionPct !== null ? 'firm_lead' : template ? 'template' : null;
+        const dimensions = assessDimensions(active.map((e) => ({ participantRef: e.participantRef, source: e.source, monthlyVolume: e.monthlyVolume, minutesPerOccurrence: e.minutesPerOccurrence })),
+          { overrides: p.overrides, reductionBasis });
+        const disputed = items.filter((e) => e.review.status === 'disputed').length;
+        const actions: string[] = [];
+        if (p.missingMeasurements.includes('monthlyVolume')) actions.push('Ask how often this happens: follow-up questions can collect it.');
+        if (p.missingMeasurements.includes('minutesPerOccurrence')) actions.push('Ask how long each occurrence takes: follow-up questions can collect it.');
+        if (p.disagreements.length) actions.push('Accounts differ: talk to the roles involved before relying on the figures.');
+        if (p.participantCount === 1) actions.push('Only one person described this: hear from someone else in a related role.');
+        if (disputed) actions.push(`Resolve ${disputed === 1 ? 'the disputed piece' : `${disputed} disputed pieces`} of evidence.`);
+        if (p.classificationSource === 'playbook') actions.push('The suggested approach comes from industry knowledge: confirm or correct it.');
+        if (!p.classification) actions.push('Choose an approach: overhaul, fix, automate or keep human.');
+        if (p.requiresComplianceReview) actions.push('Involves regulated judgement: a qualified compliance reviewer must look at any change.');
+        if (!p.validated) actions.push('Confirm the finding, or correct what doesn’t match how your firm works.');
+        const { quotes: _withheldUnlessAllowed, corrections: _legacy, ...rest } = p;
+        return {
+          ...rest, evidenceIds: items.map((e) => e.id), disputedEvidence: disputed, dimensions, reductionBasis, validationActions: actions,
+          history: history.filter((h) => h.entity_id === p.id || items.some((e) => e.id === h.entity_id)).map(entry),
+        };
+      });
+
+      const coverage = new Map<string, { asked: number; notInvolved: number }>();
+      for (const sRow of sessions) for (const [stage, c] of Object.entries((sRow.coverage ?? {}) as Record<string, any>)) {
+        const cur = coverage.get(stage) ?? { asked: 0, notInvolved: 0 };
+        cur.asked += Number(c?.questionsAsked ?? 0); cur.notInvolved += c?.notInvolved ? 1 : 0; coverage.set(stage, cur);
+      }
+      const findingKeys = new Set(pb.painPoints.map((p) => p.key));
+      const stages = STAGE_IDS.map((id) => {
+        const ev = evidence.filter((e) => e.stageId === id && e.review.status !== 'disputed');
+        const cov = coverage.get(id) ?? { asked: 0, notInvolved: 0 };
+        return {
+          id, name: STAGES[id].name, regulatedJudgement: STAGES[id].regulatedJudgement, parallel: id === 'protection',
+          evidence: ev.length, findings: pb.painPoints.filter((p) => p.stageId === id).map((p) => p.id),
+          openQuestions: [...new Set(ev.flatMap((e) => e.outstandingQuestions))].length,
+          explored: ev.length > 0 || cov.asked > 0, questionsAsked: cov.asked, notInvolved: cov.notInvolved,
+          hypotheses: playbook.cards.filter((c) => c.stageId === id && !findingKeys.has(c.id)).map((c) => ({ key: c.id, title: c.title, likelyClassification: c.likelyClassification })),
+        };
+      });
+
+      const participants = people.map((r) => ({
+        id: r.id as string, name: r.display_name as string, role: r.role as string, roleLabel: ROLE_LABELS[r.role as Role] ?? r.role,
+        status: (r.main_status ?? (r.consented_at ? 'consented' : r.opened ? 'opened' : 'invited')) as string,
+        consented: !!r.consented_at, followUps: r.follow_ups as number, followUpOpen: !!r.follow_up_open,
+      }));
+      const roles = Object.keys(ROLE_LABELS).map((role) => ({
+        role, label: ROLE_LABELS[role as Role], invited: participants.filter((x) => x.role === role).length,
+        completed: participants.filter((x) => x.role === role && x.status === 'completed').length,
+      }));
+      const mainStages = stages.filter((s) => !s.parallel);
+      const openQuestions = [...new Set([...evidence.filter((e) => e.review.status !== 'disputed').flatMap((e) => e.outstandingQuestions), ...findings.flatMap((f) => f.outstandingQuestions as string[])])];
+      const assumptions = [...new Set(findings.flatMap((f) => [...(f.assumptions as string[]), ...(f.classificationSource === 'playbook' ? [`${f.title}: approach suggested by industry knowledge, not confirmed`] : [])]))];
+      const profile = FirmProfileSchema.safeParse(d.firm_profile);
+      const blockers = [
+        ...(pb.analysedAt ? [] : ['The interviews haven’t been analysed yet.']),
+        ...(d.status === 'priorities_approved' ? ['Priorities are already approved.'] : []),
+      ];
+      return {
+        discovery: { id: d.id as string, name: `Discovery started ${new Date(d.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
+          status: d.status as string, createdAt: d.created_at, updatedAt: d.updated_at, analysedAt: pb.analysedAt, reportedAt: d.reported_at, knowledgeVersion: d.playbook_version as string },
+        firmName: d.firm_name as string,
+        profile: profile.success ? profile.data : null,
+        participants, roles, stages, evidence, findings,
+        crossRole: pb.crossRole, topThree: pb.topThree,
+        completion: {
+          blockers, canComplete: blockers.length === 0,
+          interviews: { invited: participants.length, completed: participants.filter((x) => x.status === 'completed').length },
+          stagesExplored: mainStages.filter((s) => s.explored).length, stagesTotal: mainStages.length,
+          findings: {
+            total: findings.length, withEvidence: findings.filter((f) => f.evidenceIds.length - f.disputedEvidence > 0).length,
+            needValidation: findings.filter((f) => !f.validated).length,
+            weakExistence: findings.filter((f) => ['insufficient', 'low'].includes(f.dimensions.existence.level)).length,
+          },
+          openQuestions: openQuestions.length, openQuestionList: openQuestions.slice(0, 50),
+          missingMeasurements: findings.filter((f) => (f.missingMeasurements as string[]).length > 0).length,
+          assumptions: assumptions.length, assumptionList: assumptions.slice(0, 50),
+          disputedEvidence: evidence.filter((e) => e.review.status === 'disputed').length,
+        },
+      };
+    });
+  }
+
+  // Phase 4: opportunity intelligence for one discovery. Everything is derived from discovery, the existing
+  // scores and the stored business case; nothing here calls the AI.
+  async opportunityAssessments(ctx: FirmContext, discoveryId: string) {
+    const dw = await this.discoveryWorkspace(ctx, discoveryId);
+    const playbook = await this.playbookFor(ctx, discoveryId);
+    const packs = await withFirmContext(this.db, ctx, async (tx) => (await tx.query(
+      'select pain_point_id, status from implementation_packs where discovery_id = $1', [discoveryId])).rows.map((r) => ({ painPointId: r.pain_point_id as string, status: r.status as string })));
+    const opportunities = assessOpportunities(dw, playbook, packs);
+    const count = (...s: string[]) => opportunities.filter((o) => s.includes(o.status)).length;
+    const byClass = (c: string | null) => opportunities.filter((o) => o.classification === c).length;
+    return {
+      discovery: dw.discovery, firmName: dw.firmName,
+      summary: {
+        total: opportunities.length,
+        byClassification: { overhaul: byClass('overhaul'), fix: byClass('fix'), automate: byClass('automate'), keep_human: byClass('keep_human'), unclassified: byClass(null) },
+        awaitingValidation: count('awaiting_validation'), readyForReview: count('ready_for_review', 'challenged'), approved: count('approved', 'sent_to_engineering'),
+        sentToEngineering: count('sent_to_engineering'), needsEvidence: count('needs_evidence'), needsClassification: count('needs_classification'), complianceReview: count('compliance_review'),
+        keepHuman: count('keep_human'), rejected: count('rejected'), prioritised: opportunities.filter((o) => o.priorityRank !== null).length,
+      },
+      opportunities,
+      history: Object.fromEntries(dw.findings.map((f) => [f.id, f.history])),
+      hypotheses: dw.stages.flatMap((s) => s.hypotheses.map((h) => ({ ...h, stageId: s.id, stageName: s.name }))),
+      scoring: { version: DEFAULT_SCORING_CONFIG.version, weights: DEFAULT_SCORING_CONFIG.weights, bands: PRIORITY_BANDS },
+    };
+  }
+
+  // Review decisions on an opportunity: approve, challenge, reject or reopen. Append-only, audited.
+  async recordOpportunityDecision(ctx: Actor, discoveryId: string, painPointId: string, input: unknown): Promise<void> {
+    const d = OpportunityDecisionSchema.parse(input);
+    const { opportunities } = await this.opportunityAssessments(ctx, discoveryId);
+    const o = opportunities.find((x) => x.id === painPointId);
+    if (!o) throw new NotFoundError('Opportunity not found');
+    if (d.decision === 'approved') {
+      const blocking = approvalBlockers(o);
+      if (blocking.length) throw Object.assign(new Error(`This opportunity can’t be approved yet: ${blocking.map((g) => g.label.toLowerCase()).join('; ')}.`), { statusCode: 409 });
+    }
+    await this.insertDecision(ctx, discoveryId, painPointId, { decision: d.decision }, o.decision.latest, d.reason || null);
+  }
+
+  // Records the hand-over to JADA engineering, with a snapshot of exactly what was sent.
+  async recordEngineeringHandover(ctx: Actor, discoveryId: string, painPointId: string, brief: unknown, previous: string | null): Promise<void> {
+    await this.insertDecision(ctx, discoveryId, painPointId, { decision: 'sent_to_engineering', brief }, previous, 'Sent to JADA engineering review');
+  }
+
+  private async insertDecision(ctx: Actor, discoveryId: string, painPointId: string, value: Record<string, unknown>, previous: string | null, reason: string | null) {
+    await withFirmContext(this.db, ctx, async (tx) => {
+      await tx.query(
+        `insert into corrections (org_id, discovery_id, entity_type, entity_id, field, old_value, new_value, reason, corrected_by)
+         values ($1,$2,'pain_point',$3,'opportunity_decision',$4,$5,$6,$7)`,
+        [ctx.orgId, discoveryId, painPointId, JSON.stringify(previous), JSON.stringify(value), reason, ctx.userId]);
+      await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: `opportunity.${value.decision}`, entityType: 'pain_point', entityId: painPointId }]);
+    });
+  }
+
+  // Phase 3: the firm lead marks one piece of evidence validated or disputed, with a reason.
+  // Recorded in the append-only corrections history; a dispute removes it from the next analysis.
+  async reviewEvidence(ctx: Actor, discoveryId: string, evidenceId: string, input: unknown): Promise<void> {
+    const review = EvidenceReviewSchema.parse(input);
+    await withFirmContext(this.db, ctx, async (tx) => {
+      const e = await tx.query('select id from evidence_records where id = $1 and discovery_id = $2', [evidenceId, discoveryId]);
+      if (!e.rows[0]) throw new NotFoundError('Evidence not found');
+      const prev = await tx.query(
+        `select new_value from corrections where entity_type = 'evidence_record' and entity_id = $1 and field = 'review' order by created_at desc limit 1`, [evidenceId]);
+      await tx.query(
+        `insert into corrections (org_id, discovery_id, entity_type, entity_id, field, old_value, new_value, reason, corrected_by)
+         values ($1,$2,'evidence_record',$3,'review',$4,$5,$6,$7)`,
+        [ctx.orgId, discoveryId, evidenceId, JSON.stringify(prev.rows[0]?.new_value ?? 'unreviewed'), JSON.stringify(review.status), review.reason || null, ctx.userId]);
+      await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: `evidence.${review.status}`, entityType: 'evidence_record', entityId: evidenceId }]);
+    });
+  }
+
+  // Phase 3: discovery completion. The firm lead marks the discovery ready for opportunity review.
+  // Nothing is forced to "verified": open questions and uncertainties are recorded with the decision.
+  async completeDiscovery(ctx: Actor, discoveryId: string, note: string): Promise<{ status: string }> {
+    const ws = await this.discoveryWorkspace(ctx, discoveryId);
+    if (!ws.discovery.analysedAt) throw Object.assign(new Error('Analyse the interviews before completing the discovery.'), { statusCode: 409 });
+    if (ws.discovery.status === 'priorities_approved') throw Object.assign(new Error('Priorities are already approved for this discovery.'), { statusCode: 409 });
+    await withFirmContext(this.db, ctx, async (tx) => {
+      await tx.query("update discoveries set status = 'review_ready' where id = $1", [discoveryId]);
+      const c = ws.completion;
+      await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: 'discovery.completed', entityType: 'discovery', entityId: discoveryId,
+        metadata: { findings: c.findings.total, needValidation: c.findings.needValidation, openQuestions: c.openQuestions, missingMeasurements: c.missingMeasurements,
+          unresolvedAssumptions: c.assumptions, disputedEvidence: c.disputedEvidence, noteLength: note.length } }]);
+    });
+    return { status: 'review_ready' };
   }
 }
 

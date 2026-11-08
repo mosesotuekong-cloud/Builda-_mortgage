@@ -88,9 +88,11 @@ describe.skipIf(!APP || !ADMIN)('end to end over HTTP', () => {
   it('other firms and participants cannot use the firm-lead API', async () => {
     const otherLead = `bp_dev=${auth.cookieFor({ userId: otherUser, orgId: otherOrg })}`;
     const r = await app.inject({ method: 'GET', url: `/api/firm/discoveries/${discoveryId}/progress`, headers: { cookie: otherLead } });
-    expect(r.json().participants).toEqual([]); // RLS: the other firm sees nothing
+    expect(r.statusCode).toBe(404);              // RLS hides it; Phase 6 reports that as not found rather than an empty list
+    expect(r.json().participants).toBeUndefined();
     const pb = await app.inject({ method: 'GET', url: `/api/firm/discoveries/${discoveryId}/playback`, headers: { cookie: otherLead } });
-    expect(pb.json().painPoints).toEqual([]);
+    expect(pb.statusCode).toBe(404);
+    expect(pb.json().painPoints).toBeUndefined();
     const anon = await app.inject({ method: 'GET', url: `/api/firm/discoveries/${discoveryId}/progress` });
     expect(anon.statusCode).toBe(401);
   });
@@ -219,12 +221,16 @@ describe.skipIf(!APP || !ADMIN)('end to end over HTTP', () => {
     const id = pb.painPoints[0].id;
     const bad = await app.inject({ method: 'POST', url: `/api/firm/discoveries/${discoveryId}/approve`, headers: { cookie: leadCookie() }, payload: { priorities: [randomUUID()], proceedWith: null } });
     expect(bad.statusCode).toBe(400);
+    // Phase 5: bulk approval follows the single-decision rules, so the finding must be validated first.
+    const early = await app.inject({ method: 'POST', url: `/api/firm/discoveries/${discoveryId}/approve`, headers: { cookie: leadCookie() }, payload: { priorities: [id], proceedWith: id } });
+    expect(early.statusCode).toBe(409);
+    await app.inject({ method: 'POST', url: `/api/firm/discoveries/${discoveryId}/pain-points/${id}/corrections`, headers: { cookie: leadCookie() }, payload: { field: 'validated', value: true, reason: 'Confirmed' } });
     const ok = (await app.inject({ method: 'POST', url: `/api/firm/discoveries/${discoveryId}/approve`, headers: { cookie: leadCookie() }, payload: { priorities: [id], proceedWith: id, note: 'Start here' } })).json();
     packId = ok.packId;
     expect(packId).toBeTruthy();
     const again = (await app.inject({ method: 'POST', url: `/api/firm/discoveries/${discoveryId}/approve`, headers: { cookie: leadCookie() }, payload: { priorities: [id], proceedWith: id } })).json();
     expect(again.packId).toBe(packId);
-    expect((await admin.query('select count(*)::int as n from implementation_packs')).rows[0].n).toBe(1);
+    expect((await admin.query('select count(*)::int as n from implementation_packs where discovery_id = $1', [discoveryId])).rows[0].n).toBe(1);
     const after = (await app.inject({ method: 'GET', url: `/api/firm/discoveries/${discoveryId}/playback`, headers: { cookie: leadCookie() } })).json();
     expect(after.painPoints[0].validated).toBe(true);
     const status = (await app.inject({ method: 'GET', url: `/api/firm/discoveries/${discoveryId}/implementation`, headers: { cookie: leadCookie() } })).json();
@@ -276,7 +282,11 @@ describe.skipIf(!APP || !ADMIN)('end to end over HTTP', () => {
   });
 
   it('serves the participant and firm pages', async () => {
-    for (const url of ['/interview', '/static/interview.js', '/static/app.css', `/firm/discoveries/${discoveryId}`, '/jada', '/static/jada.js', '/knowledge', '/static/knowledge.js', '/static/fonts/AtkinsonHyperlegible-Regular.ttf']) {
+    // Phase 6: the older firm page now redirects to the same findings in the workspace.
+    const old = await app.inject({ method: 'GET', url: `/firm/discoveries/${discoveryId}` });
+    expect(old.statusCode).toBe(302);
+    expect(old.headers.location).toBe(`/app/discovery/${discoveryId}/findings`);
+    for (const url of ['/interview', '/static/interview.js', '/static/app.css', '/app', '/jada', '/static/jada.js', '/knowledge', '/static/knowledge.js', '/static/fonts/AtkinsonHyperlegible-Regular.ttf']) {
       expect((await app.inject({ method: 'GET', url })).statusCode).toBe(200);
     }
   });

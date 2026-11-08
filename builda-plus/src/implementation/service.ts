@@ -6,6 +6,8 @@ import type { FirmService } from '../firm/service';
 import type { Playbook } from '../knowledge/playbook';
 import { TEMPLATES, type AutomationTemplate } from '../knowledge/templates';
 import { buildReportModel, type ReportModel } from '../report/model';
+import { approvalBlockers, briefToMarkdown } from '../analysis/opportunityAssessment';
+import { packOf, submissionOf } from './engineering';
 import { assessReview, buildImplementationPack, packToMarkdown, PackNotPossibleError, ReviewSchema, type ImplementationPack } from './pack';
 
 type Actor = FirmContext & { userId: string };
@@ -52,6 +54,26 @@ export class DecisionService {
   // Firm lead approves priorities and chooses what to build (brief §2, §4 step 10). Creates the pack for JADA.
   async approve(ctx: Actor, discoveryId: string, input: unknown): Promise<{ approvalId: string; packId: string | null }> {
     const a = ApprovalSchema.parse(input);
+    // Phase 5, issue A: approving several priorities at once follows exactly the rules for approving one.
+    // Every priority must pass the same gates, and each is recorded as its own audited decision.
+    const intel = await this.deps.analysis.opportunityAssessments(ctx, discoveryId);
+    const byId = new Map(intel.opportunities.map((o) => [o.id, o]));
+    const refused = a.priorities.flatMap((id) => {
+      const o = byId.get(id);
+      const b = o ? approvalBlockers(o) : [];
+      return b.length ? [`${o!.title}: ${b.map((g) => g.label.toLowerCase()).join('; ')}`] : [];
+    });
+    if (refused.length) throw Object.assign(new Error(`Nothing was approved. Each priority must meet the same rules as approving it on its own. ${refused.join('. ')}.`), { statusCode: 409 });
+    if (a.proceedWith && byId.has(a.proceedWith)) {
+      const eb = byId.get(a.proceedWith)!.gates.filter((g) => g.blocksEngineering && g.code !== 'not_validated');
+      if (eb.length) throw Object.assign(new Error(`This item can’t go to engineering yet: ${eb.map((g) => g.label.toLowerCase()).join('; ')}.`), { statusCode: 409 });
+    }
+    for (const id of a.priorities) {
+      const o = byId.get(id);
+      if (o && o.decision.latest !== 'approved' && o.decision.latest !== 'sent_to_engineering') {
+        await this.deps.analysis.recordOpportunityDecision(ctx, discoveryId, id, { decision: 'approved', reason: a.note || 'Approved with the priorities' });
+      }
+    }
     const playback = await this.deps.analysis.playback(ctx, discoveryId);
     const ids = new Set(playback.painPoints.map((p) => p.id));
     if (!a.priorities.every((id) => ids.has(id))) throw Object.assign(new Error('Some priorities are not findings of this discovery.'), { statusCode: 400 });
@@ -93,7 +115,7 @@ export class DecisionService {
   async packStatus(ctx: FirmContext, discoveryId: string) {
     return withFirmContext(this.db, ctx, async (tx) => {
       const r = await tx.query(
-        `select p.id, p.status, p.content->'painPoint'->>'title' as title, p.updated_at,
+        `select p.id, p.status, coalesce(p.content->'painPoint'->>'title', p.content->'submission'->>'title') as title, p.updated_at,
                 (select r.result from pack_reviews r where r.pack_id = p.id order by r.created_at desc limit 1) as last_result
            from implementation_packs p where p.discovery_id = $1 order by p.created_at desc`, [discoveryId]);
       return r.rows.map((x) => ({ id: x.id, title: x.title, status: x.status, updatedAt: x.updated_at, failures: x.last_result?.failures ?? [] }));
@@ -107,10 +129,19 @@ export class JadaService {
   // Discoveries waiting for an engineer (firm name and reason only) and picking one up.
   async queue(userId: string) {
     const r = await this.db.query('select * from jada_queue($1)', [userId]);
-    return r.rows.map((x) => ({ discoveryId: x.discovery_id, firmName: x.firm_name, reason: x.reason, since: x.since }));
+    // The database function's wording predates fix and overhaul submissions; say what is actually waiting.
+    const REASON: Record<string, string> = { 'Priorities approved — implementation pack ready': 'Approved opportunities sent for engineering review' };
+    return r.rows.map((x) => ({ discoveryId: x.discovery_id, firmName: x.firm_name, reason: REASON[x.reason] ?? x.reason, since: x.since }));
+  }
+
+  async isEngineer(userId: string): Promise<boolean> {
+    return (await this.db.query("select 1 from jada_staff_roles where user_id = $1 and role = 'engineer'", [userId])).rowCount === 1;
   }
 
   async pickUp(userId: string, discoveryId: string): Promise<void> {
+    // Phase 6: only discoveries that are actually waiting in the queue can be picked up. The database
+    // function itself accepts any discovery id; tightening it there needs a migration (pilot blocker list).
+    if (!(await this.queue(userId)).some((q) => q.discoveryId === discoveryId)) throw new NotFoundError('That discovery isn’t waiting to be picked up.');
     const r = await this.db.query('select jada_pick_up($1, $2) as ok', [userId, discoveryId]);
     if (!r.rows[0].ok) throw Object.assign(new Error('Only JADA engineers can pick up discoveries.'), { statusCode: 403 });
   }
@@ -135,7 +166,8 @@ export class JadaService {
       const esc = await tx.query('select id, reason, details_redacted, status, created_at, resolved_at from escalations where discovery_id = $1 order by created_at desc', [discoveryId]);
       return {
         id: d.rows[0].id, firmName: d.rows[0].firm_name, status: d.rows[0].status,
-        packs: packs.rows.map((p) => ({ id: p.id, status: p.status, content: p.content as ImplementationPack, createdAt: p.created_at,
+        // This earlier view shows implementation packs only; every submission (fix, overhaul, automate) is in the engineering workspace.
+        packs: packs.rows.filter((p) => packOf(p.content)).map((p) => ({ id: p.id, status: p.status, content: packOf(p.content) as ImplementationPack, createdAt: p.created_at,
           reviews: reviews.rows.filter((r) => r.pack_id === p.id).map((r) => ({ decision: r.decision, failures: r.result.failures, notes: r.notes, at: r.created_at })) })),
         escalations: esc.rows.map((e) => ({ id: e.id, reason: e.reason, detail: e.details_redacted, status: e.status, createdAt: e.created_at, resolvedAt: e.resolved_at })),
       };
@@ -146,21 +178,26 @@ export class JadaService {
     return withJadaContext(this.db, userId, async (tx) => {
       const r = await tx.query('select p.content, o.name from implementation_packs p join organisations o on o.id = p.org_id where p.id = $1', [packId]);
       if (!r.rows[0]) throw new NotFoundError('Pack not found');
-      return packToMarkdown(r.rows[0].content, r.rows[0].name);
+      const pk = packOf(r.rows[0].content);
+      if (pk) return packToMarkdown(pk, r.rows[0].name);
+      return briefToMarkdown({ ...submissionOf(r.rows[0].content), firmName: r.rows[0].name } as any);
     });
   }
 
   async review(userId: string, packId: string, input: unknown) {
     const review = ReviewSchema.parse(input);
     return withJadaContext(this.db, userId, async (tx) => {
-      const r = await tx.query('select id, org_id, discovery_id, content from implementation_packs where id = $1 for update', [packId]);
+      const r = await tx.query('select id, org_id, discovery_id, content, status from implementation_packs where id = $1 for update', [packId]);
       const pack = r.rows[0];
       if (!pack) throw new NotFoundError('Pack not found');
-      const result = assessReview(pack.content, review);
+      const pk = packOf(pack.content);
+      if (!pk) throw Object.assign(new Error('The two-week check applies to automation packs. Use the engineering workspace for this submission.'), { statusCode: 400 });
+      const result = assessReview(pk, review);
       const decision = result.qualifies ? 'confirmed' : 'needs_changes';
       await tx.query('insert into pack_reviews (org_id, discovery_id, pack_id, reviewer_id, checks, result, decision, notes) values ($1,$2,$3,$4,$5,$6,$7,$8)',
         [pack.org_id, pack.discovery_id, packId, userId, { ...review.checks, unresolvedDependencies: review.unresolvedDependencies }, result, decision, review.notes]);
-      await tx.query('update implementation_packs set status = $1, updated_at = now() where id = $2', [decision, packId]);
+      // The earlier two-week review only moves submissions that haven't entered the Phase 5 workflow.
+      if (['in_review', 'needs_changes', 'confirmed'].includes(pack.status)) await tx.query('update implementation_packs set status = $1, updated_at = now() where id = $2', [decision, packId]);
       await insertAudit(tx, [{ orgId: pack.org_id, discoveryId: pack.discovery_id, actor: `jada:${userId}`, action: `pack.${decision}`, entityType: 'implementation_pack', entityId: packId,
         metadata: { failures: result.failures.length } }]);
       return { decision, failures: result.failures };

@@ -8,6 +8,8 @@ export interface AutomationTemplate {
   reductionBasis: string;
   typicalComplexity: 'low' | 'medium' | 'high';
   humanApprovalBuiltIn: boolean;
+  // Conventional automation uses rules, schedules and templates; AI-assisted uses a language model with human review.
+  automationType: 'conventional' | 'ai_assisted';
   owner: string;
   spec: {
     workflow: string;
@@ -32,6 +34,7 @@ export const TEMPLATES: AutomationTemplate[] = [
     expectedReductionPct: 0.5,
     reductionBasis: 'Planning assumption pending the first implementations — not yet measured',
     typicalComplexity: 'low',
+    automationType: 'conventional',
     humanApprovalBuiltIn: true,
     owner: 'JADA engineering',
     spec: {

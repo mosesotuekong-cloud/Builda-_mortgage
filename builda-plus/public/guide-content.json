@@ -1,0 +1,550 @@
+{
+  "version": 1,
+  "global": [
+    {
+      "q": "Is this guide AI?",
+      "a": "Partly. Plus’s answers come only from the help written into builda+. When the AI service is available, Plus uses it to understand your question and word the answer from that help, so your question is sent to it (OpenAI). It never sees your firm’s data, and questions aren’t stored. Please don’t include client or staff details. If the AI isn’t available, Plus answers from the written help directly."
+    },
+    {
+      "q": "Does builda+ give mortgage advice?",
+      "a": "No. It looks at how work moves through the firm, never at advice. Advice and suitability decisions are classified “Keep human” and stay with your advisers."
+    },
+    {
+      "q": "Is any of our information sent to AI?",
+      "a": "The interviews and the analysis use AI to hold the conversation and to group what people said. People’s names are never sent to it. Figures, confidence, scores and the business case are calculated by fixed rules, not AI."
+    },
+    {
+      "q": "Who can see our information?",
+      "a": "People signed in to your firm, and JADA staff only for a discovery assigned to them. Other firms never see anything of yours."
+    },
+    {
+      "q": "What do Overhaul, Fix, Automate and Keep human mean?",
+      "a": "Overhaul: the process itself needs redesigning. Fix: a simple change to how something is done or set up. Automate: repetitive, structured work, with staff approving what goes out. Keep human: judgement, accountability and relationships stay with people."
+    },
+    {
+      "q": "What does confidence mean?",
+      "a": "How well the evidence supports a claim, rated separately for: the problem exists here, how often it happens, how long it takes, and its impact. More independent accounts that agree raise it; disagreements and single accounts lower it."
+    },
+    {
+      "q": "Is time recovered a saving?",
+      "a": "No. Recovered time is capacity: your team gets hours back. It only becomes a cash saving if the firm actually spends less, and builda+ only counts savings you state yourself."
+    },
+    {
+      "q": "Who is JADA?",
+      "a": "JADA is the implementation partner. JADA engineers review the opportunities you send, design the change, agree a plan with you and deliver it. Nothing is built automatically."
+    },
+    {
+      "q": "Can I undo a change?",
+      "a": "Every change is kept in the history with your reason. You can change a figure again (or leave it blank to clear your correction), un-confirm a finding, or reopen a decision; the earlier entries stay on record."
+    }
+  ],
+  "pages": {
+    "overview": {
+      "title": "Overview",
+      "purpose": "Where your firm stands across discovery, findings and implementation, and the one step to take next.",
+      "check": [
+        "The “Recommended next action” box: it always shows the next step.",
+        "“Needs your attention”: anything waiting on you.",
+        "The progress steps, from firm profile to opportunity assessment."
+      ],
+      "how": [
+        "Click the button in the “Recommended next action” box.",
+        "Come back here whenever you’re unsure what to do next."
+      ],
+      "next": "Follow the recommended next action.",
+      "faqs": [
+        {
+          "q": "Why are some findings “awaiting review” even though I’m finished?",
+          "a": "Findings you haven’t confirmed are counted here. Some are left unconfirmed on purpose, for example regulated work kept with people or held for compliance review."
+        },
+        {
+          "q": "What are the key indicators?",
+          "a": "Simple counts across all your discoveries: evidence items, opportunities, findings awaiting review and items sent to engineering. Nothing is estimated."
+        }
+      ],
+      "href": "/app"
+    },
+    "profile": {
+      "title": "Firm details",
+      "purpose": "Context about your firm, so the interviews and the business case start from how you actually work. Only what you enter is shown.",
+      "check": [
+        "Mortgage advisers is filled in (enter 0 if none). It’s the only required field.",
+        "Authorisation: directly authorised or an appointed representative.",
+        "Applications a month: the annual total shown underneath looks right.",
+        "Hourly cost is only filled in if you know it."
+      ],
+      "how": [
+        "Click any (i) for a plain definition.",
+        "Fill in what you know; leave the rest blank.",
+        "Click Save profile. A “Next” prompt then appears in the bar."
+      ],
+      "next": "Add your technology inventory.",
+      "faqs": [
+        {
+          "q": "Do I have to fill everything in?",
+          "a": "No. Only the number of mortgage advisers is required. Anything else you’re unsure of can stay blank; builda+ never fills it in for you."
+        },
+        {
+          "q": "Why does it ask for an hourly cost?",
+          "a": "Only to show the scale of time your team could get back. builda+ never estimates it and never presents it as a saving."
+        },
+        {
+          "q": "What happens if we start a second discovery?",
+          "a": "The new discovery starts from your latest profile, and you confirm it’s still right."
+        }
+      ],
+      "href": "/app/profile"
+    },
+    "technology": {
+      "title": "Technology inventory",
+      "purpose": "The systems your firm already uses, so recommendations build on what you have. Recording a system never means builda+ connects to it.",
+      "check": [
+        "Your CRM or case system, email or shared mailboxes, document storage and lender portals are listed.",
+        "Each system has the teams that use it.",
+        "Notes say how information gets in and out (typed in, exported, linked)."
+      ],
+      "how": [
+        "Fill in the “Add a system” form and click Add to inventory.",
+        "Repeat for each system: the form clears after each one.",
+        "Use Edit or Remove on a row to change it."
+      ],
+      "next": "Invite the people to interview.",
+      "faqs": [
+        {
+          "q": "We have several systems of the same kind. What do I do?",
+          "a": "Add each one separately; the category can repeat. Only the names must be different."
+        },
+        {
+          "q": "One product does several jobs.",
+          "a": "Add it once, choose the category for its main job, and list everything it does under “What the firm uses it for”."
+        },
+        {
+          "q": "Is there a limit?",
+          "a": "Up to 50 systems."
+        },
+        {
+          "q": "It says the system is already in the inventory.",
+          "a": "A system with the same name exists. Edit that row, or use a different name."
+        }
+      ],
+      "href": "/app/profile/technology"
+    },
+    "discovery-list": {
+      "title": "Discoveries",
+      "purpose": "Each discovery is one round of interviews and findings. Earlier discoveries are kept for comparison.",
+      "check": [
+        "The status of your current discovery."
+      ],
+      "how": [
+        "Click Open to work on a discovery, or Start a new discovery."
+      ],
+      "next": "Open your current discovery.",
+      "faqs": [
+        {
+          "q": "When should I start a new discovery?",
+          "a": "Usually for a later round, for example to see what has changed after improvements. The new one starts from your latest firm profile."
+        }
+      ],
+      "href": "/app/discovery"
+    },
+    "disc-overview": {
+      "title": "Discovery: overview",
+      "purpose": "Progress of this discovery and its main actions: analyse the interviews, prepare follow-up questions, or ask JADA for help.",
+      "check": [
+        "How many interviews have finished.",
+        "The recommended next action for this discovery.",
+        "Anything outstanding: unfinished interviews, findings to review, disputed evidence."
+      ],
+      "how": [
+        "Analyse interviews once most have finished (it needs at least one). You can re-analyse later.",
+        "Prepare follow-up questions to ask people whose figures differed or were missing; send each person their new link.",
+        "Ask JADA for help if you’re stuck: a JADA contact gets in touch."
+      ],
+      "next": "Work through the tabs from Interviews to Review.",
+      "faqs": [
+        {
+          "q": "When should I analyse?",
+          "a": "When most interviews have finished. Analysing early is fine; you can re-analyse when more come in. Your own classifications are kept, and evidence you disputed is left out."
+        },
+        {
+          "q": "Does analysis use AI?",
+          "a": "AI groups what people said into findings and suggests a classification, quoting their words. Confidence, figures and scores are fixed rules."
+        }
+      ]
+    },
+    "disc-context": {
+      "title": "Discovery: firm context",
+      "purpose": "The firm details and technology this discovery uses as background.",
+      "check": [
+        "It still matches how your firm works."
+      ],
+      "how": [
+        "To change it, go to Firm profile in the left menu."
+      ],
+      "next": "Invite people on the Interviews tab.",
+      "faqs": []
+    },
+    "disc-interviews": {
+      "title": "Discovery: interviews",
+      "purpose": "Invite the people who do the work, get their interview links, and follow their progress.",
+      "check": [
+        "A mix of roles: two or three senior advisers, at least one case manager or administrator, and yourself.",
+        "Three or more people per role if you want their quotes shown later.",
+        "Everyone has received their link."
+      ],
+      "how": [
+        "Enter a name, choose a role, and click Add and get their link.",
+        "Copy the link and send it yourself. builda+ doesn’t email anyone.",
+        "If someone loses their link, click Make a new link (the old one stops working)."
+      ],
+      "next": "When most have finished, analyse the interviews on the Overview tab.",
+      "faqs": [
+        {
+          "q": "Does builda+ send the invitations?",
+          "a": "No. You copy each person’s link and share it however you like."
+        },
+        {
+          "q": "Can staff see each other’s answers?",
+          "a": "No. You see findings by role, not by person, and names are never sent to the AI."
+        },
+        {
+          "q": "Why will some quotes be hidden?",
+          "a": "If fewer than three people in a role take part, their exact words are withheld so nobody can be identified. Their points are still used."
+        },
+        {
+          "q": "How long does an interview take?",
+          "a": "About 20 to 30 minutes. People can pause and carry on later with the same link."
+        },
+        {
+          "q": "What if someone mentions a client?",
+          "a": "The interview pauses, the details are removed, and a person from JADA gets in touch. Client files and details are kept out of discovery."
+        }
+      ]
+    },
+    "disc-journey": {
+      "title": "Discovery: journey",
+      "purpose": "The stages of the mortgage journey, with the evidence and findings at each one.",
+      "check": [
+        "Stages marked “Not yet explored”: consider asking about them in follow-up questions.",
+        "Stages labelled “Adviser judgement: preparation only”: builda+ only looks at the admin around them."
+      ],
+      "how": [
+        "Click a finding on a stage to open it."
+      ],
+      "next": "Review the evidence.",
+      "faqs": [
+        {
+          "q": "What is an industry hypothesis?",
+          "a": "A common problem at mortgage firms that nobody in your interviews raised. It isn’t evidence that you have it and is never prioritised; ask about it in a follow-up if it sounds familiar."
+        }
+      ]
+    },
+    "disc-evidence": {
+      "title": "Discovery: evidence",
+      "purpose": "Every observation from the interviews, with where it came from and how much it can be relied on.",
+      "check": [
+        "The source on each item: employee-reported, measured, firm-provided or assumption.",
+        "Items that don’t match how your firm works.",
+        "Disputed items (use the review filter)."
+      ],
+      "how": [
+        "Open an item to see its details and, where allowed, the person’s words.",
+        "Mark validated if it’s right.",
+        "Dispute it if it’s wrong. A reason is required."
+      ],
+      "next": "Review the findings.",
+      "faqs": [
+        {
+          "q": "Does validating evidence raise confidence?",
+          "a": "No. It records that you agree. Confidence comes from independent accounts and measurements."
+        },
+        {
+          "q": "What happens when I dispute something?",
+          "a": "It’s left out of confidence and out of the next analysis, and it’s listed on the Review tab."
+        },
+        {
+          "q": "Why are the exact words withheld?",
+          "a": "Fewer than three people in that role took part, so a quote could identify someone. What they said is still used."
+        },
+        {
+          "q": "I disputed something by mistake.",
+          "a": "Open it and mark it validated instead. Both entries stay in the history."
+        }
+      ]
+    },
+    "disc-findings": {
+      "title": "Discovery: findings",
+      "purpose": "The problems the interviews point to, each with its approach and confidence.",
+      "check": [
+        "Findings awaiting your review.",
+        "Findings described by one person only.",
+        "Any with “Different perspectives”."
+      ],
+      "how": [
+        "Open each finding and confirm it, or correct what’s wrong."
+      ],
+      "next": "Complete the Review tab.",
+      "faqs": [
+        {
+          "q": "Do I have to confirm every finding?",
+          "a": "No. Unconfirmed findings aren’t taken forward, which is right for some, such as regulated work kept with people."
+        }
+      ]
+    },
+    "disc-finding": {
+      "title": "A finding",
+      "purpose": "One finding in full: what was described, confidence by claim, the figures, different perspectives, the evidence, and its history.",
+      "check": [
+        "Does it match how your firm works?",
+        "Are the figures (times a month, minutes each time) about right?",
+        "Is the approach (Overhaul, Fix, Automate, Keep human) right?",
+        "Different perspectives: is one account closer to the truth?"
+      ],
+      "how": [
+        "In “Correct or clarify”, choose what to change, enter the new value and a reason, and click Save.",
+        "Choose “Confirm or un-confirm the finding” to confirm it.",
+        "Use “Add a clarification” for context that changes no figures."
+      ],
+      "next": "Back to Findings, then the Review tab.",
+      "faqs": [
+        {
+          "q": "Will my correction raise confidence?",
+          "a": "No. A correction counts as one more account; it never raises confidence on its own."
+        },
+        {
+          "q": "How do I remove a figure I corrected?",
+          "a": "Choose the same figure and leave the value blank. The history keeps both."
+        },
+        {
+          "q": "Why do accounts differ?",
+          "a": "Often because the work varies by case type or role. builda+ keeps them side by side rather than averaging them away."
+        }
+      ]
+    },
+    "disc-review": {
+      "title": "Discovery: review",
+      "purpose": "What the discovery covered and what remains uncertain, before you move on to opportunities.",
+      "check": [
+        "Each line with a “!”: stages not explored, findings on one account, missing figures, assumptions, disputed evidence.",
+        "The assumptions still to confirm, listed below the checklist."
+      ],
+      "how": [
+        "Click a line to go to it.",
+        "Add an optional note, for example why you’re happy to proceed.",
+        "Click Mark ready for opportunity review."
+      ],
+      "next": "Proceed to opportunity assessment.",
+      "faqs": [
+        {
+          "q": "Do I need every line ticked?",
+          "a": "No. Open questions are allowed; they stay visible in the findings and the report rather than being hidden."
+        },
+        {
+          "q": "Why is the button greyed out?",
+          "a": "Either the interviews haven’t been analysed yet, or priorities are already approved for this discovery."
+        }
+      ]
+    },
+    "evidence": {
+      "title": "Evidence",
+      "purpose": "Evidence lives with each discovery. This page takes you to it.",
+      "check": [],
+      "how": [
+        "Open the discovery’s Evidence tab."
+      ],
+      "next": "",
+      "faqs": [],
+      "href": "/app/evidence"
+    },
+    "opportunities": {
+      "title": "Opportunities",
+      "purpose": "Your findings, classified and prioritised by fixed rules, plus the discovery report.",
+      "check": [
+        "The approach of each item suits the problem.",
+        "Priority versus “confidence it exists”: a high priority on weak evidence needs corroborating.",
+        "Why items are “Not prioritised”.",
+        "Industry hypotheses are not findings about your firm."
+      ],
+      "how": [
+        "Use the filters to narrow the list.",
+        "Open an opportunity to review its business case and decide.",
+        "Create and download the discovery report to record a baseline."
+      ],
+      "next": "Open the top opportunity and decide.",
+      "faqs": [
+        {
+          "q": "How is priority decided?",
+          "a": "By fixed weights on value, volume, feasibility, complexity, risk and evidence. Gates come first: work kept with people, regulated changes held for compliance review, and items without evidence from your firm are never ranked, however big."
+        },
+        {
+          "q": "Why does “Hours recovered” say Unknown?",
+          "a": "builda+ only estimates recoverable time where a reviewed pattern supplies the assumption. Otherwise it knows how long the work takes, but doesn’t guess what a change would save."
+        },
+        {
+          "q": "Two items have the same score.",
+          "a": "Then their order isn’t meaningful. Decide on the detail, not the rank."
+        },
+        {
+          "q": "Can I approve several at once?",
+          "a": "No. Each opportunity is approved on its own page, so every approval meets the same rules and has its own reason."
+        }
+      ],
+      "href": "/app/opportunities"
+    },
+    "opportunity": {
+      "title": "An opportunity",
+      "purpose": "Everything about one opportunity: readings, the problem, evidence, assessment, business case, recommended action, and your decision.",
+      "check": [
+        "Value, feasibility, evidence confidence and risk, each on its own.",
+        "Gates in the Assessment section.",
+        "In the Business case, which inputs are an Assumption.",
+        "The missing inputs."
+      ],
+      "how": [
+        "Add a business-case input you know: implementation cost, spending you’d stop, staff hours per case, revenue per case, or confirmed demand.",
+        "Under Review and approval: Approve, Challenge or Reject (a reason is needed to challenge or reject).",
+        "After approving, click Send to JADA engineering review.",
+        "If JADA asks a question, answer it here."
+      ],
+      "next": "Follow its progress on the Implementation page.",
+      "faqs": [
+        {
+          "q": "Is the time recovered a saving?",
+          "a": "No. It’s capacity. Cash savings only count when you state spending the firm will actually stop, with its basis."
+        },
+        {
+          "q": "When is payback calculated?",
+          "a": "Only when the implementation cost and a cash saving are both known."
+        },
+        {
+          "q": "Why can’t I approve or send it?",
+          "a": "It may not be confirmed yet, may rest on one person’s account, or may be regulated work held for compliance review or kept with people. The Gates list says which."
+        },
+        {
+          "q": "What does JADA receive?",
+          "a": "The problem, evidence summary, what you validated, what’s uncertain, the classification, expected impact, dependencies, risks, open questions and proposed measures. You can download the same brief."
+        }
+      ]
+    },
+    "implementation": {
+      "title": "Implementation",
+      "purpose": "Everything you sent to JADA engineering, with its status and the next step.",
+      "check": [
+        "Rows saying “JADA needs information from you”."
+      ],
+      "how": [
+        "Click an opportunity to answer JADA or see its plan."
+      ],
+      "next": "Check Impact once work completes.",
+      "faqs": [
+        {
+          "q": "Is anything built automatically?",
+          "a": "No. A named JADA engineer assesses, designs and approves each change, and agrees the plan with you."
+        },
+        {
+          "q": "What do the statuses mean?",
+          "a": "Awaiting review, under assessment, information needed from you, approved for implementation, in progress, completed, or not taken forward."
+        }
+      ],
+      "href": "/app/implementation"
+    },
+    "impact": {
+      "title": "Impact",
+      "purpose": "Results measured against the outcomes agreed before each change.",
+      "check": [
+        "Each measure has a baseline, an agreed target, and where the result comes from."
+      ],
+      "how": [
+        "Results appear here once JADA records them."
+      ],
+      "next": "",
+      "faqs": [
+        {
+          "q": "Why does it say “Not yet measured”?",
+          "a": "No result has been recorded from the agreed source yet. builda+ never estimates results."
+        },
+        {
+          "q": "Does finishing the work mean success?",
+          "a": "No. Success means the agreed measure reached its target over the agreed period."
+        }
+      ],
+      "href": "/app/impact"
+    },
+    "settings": {
+      "title": "Settings",
+      "purpose": "Your firm and account details.",
+      "check": [],
+      "how": [],
+      "next": "",
+      "faqs": []
+    },
+    "eng-queue": {
+      "title": "Engineering queue",
+      "purpose": "Opportunities firms have sent from builda+, assigned to you and grouped by status.",
+      "check": [
+        "“Waiting to be picked up”: firm name and reason only until you pick a discovery up.",
+        "Items awaiting information from a firm."
+      ],
+      "how": [
+        "Click Pick up to take on a discovery.",
+        "Use the filters, then open a submission."
+      ],
+      "next": "Open a submission awaiting review.",
+      "faqs": [
+        {
+          "q": "Why can’t I see a firm’s details?",
+          "a": "Until you pick up its discovery you only see the firm name and why it’s waiting. After that you see its submissions in full."
+        }
+      ],
+      "href": "/jada/engineering"
+    },
+    "eng-detail": {
+      "title": "An engineering submission",
+      "purpose": "The brief from builda+, your design, the plan, the decisions and the measured outcome.",
+      "check": [
+        "What remains uncertain, and whether the stage is regulated.",
+        "Template readiness: draft, reviewed, tested.",
+        "Why the two-week build is or isn’t offered.",
+        "Success measures with agreed targets."
+      ],
+      "how": [
+        "Start assessment.",
+        "Request information from the firm if needed.",
+        "Record the solution design with acceptance criteria and no outstanding decisions.",
+        "Approve for implementation, record the plan, start, complete, then record the measured outcome.",
+        "Reject or defer with a reason."
+      ],
+      "next": "",
+      "faqs": [
+        {
+          "q": "When can I choose an AI-assisted approach?",
+          "a": "Only with a written reason why conventional automation isn’t enough, and never at a regulated-judgement stage."
+        },
+        {
+          "q": "Why isn’t the two-week build offered?",
+          "a": "Every condition must hold: automation, a tested template, confirmed access and no unresolved dependencies. The page lists what’s missing."
+        },
+        {
+          "q": "When is an implementation a success?",
+          "a": "Only when the agreed measures reach their targets. Completing the work alone reads “not yet measured”."
+        }
+      ]
+    },
+    "eng-templates": {
+      "title": "Solution templates",
+      "purpose": "Reviewed reference designs to start from. A template is a starting point, not a promise.",
+      "check": [
+        "Design review, validation and any activation gate are separate facts."
+      ],
+      "how": [],
+      "next": "",
+      "faqs": [
+        {
+          "q": "When is a template production-ready?",
+          "a": "Only when its design is reviewed, it’s been proven in a delivered implementation, and any activation gate (such as the Outlook spike) has passed."
+        }
+      ],
+      "href": "/jada/engineering/templates"
+    }
+  }
+}

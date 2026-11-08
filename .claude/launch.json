@@ -6,6 +6,30 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "builda-plus", "start"],
       "port": 3000
+    },
+    {
+      "name": "builda-plus-localdb",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set DATABASE_URL=postgres://builda_app:local-test-pw@localhost:5433/builda&& set PORT=3001&& set APP_BASE_URL=http://localhost:3001&& set OPENAI_BASE_URL=http://127.0.0.1:9/v1&& npm --prefix builda-plus start"],
+      "port": 3001
+    },
+    {
+      "name": "builda-plus-demo",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set DATABASE_URL=postgres://builda_app:local-test-pw@localhost:5433/builda_demo&& set PORT=3002&& set APP_BASE_URL=http://localhost:3002&& set OPENAI_BASE_URL=http://127.0.0.1:9/v1&& npm --prefix builda-plus start"],
+      "port": 3002
+    },
+    {
+      "name": "builda-plus-demo-ai",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set DATABASE_URL=postgres://builda_app:local-test-pw@localhost:5433/builda_demo&& set PORT=3003&& set APP_BASE_URL=http://localhost:3003&& npm --prefix builda-plus start"],
+      "port": 3003
+    },
+    {
+      "name": "builda-plus-demo-gated",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "set DATABASE_URL=postgres://builda_app:local-test-pw@localhost:5433/builda_demo&& set PORT=3004&& set APP_BASE_URL=http://localhost:3004&& set DEMO_ACCESS_PASSWORD=local-demo-gate-pw&& set OPENAI_BASE_URL=http://127.0.0.1:9/v1&& npm --prefix builda-plus start"],
+      "port": 3004
     }
   ]
 }

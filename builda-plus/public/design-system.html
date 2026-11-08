@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Design system — builda+</title>
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/design-system.css">
+<link rel="stylesheet" href="/static/design-system-page.css">
+</head>
+<body class="ds-base">
+<a class="ds-skip-link" href="#main">Skip to content</a>
+<header class="ds-nav">
+  <div class="ds-container ds-nav__inner">
+    <a class="ds-nav__brand" href="/">builda+</a>
+    <nav class="ds-nav__menu" aria-label="Design system sections">
+      <ul class="ds-nav__links">
+        <li><a class="ds-nav__link" href="#tokens">Tokens</a></li>
+        <li><a class="ds-nav__link" href="#controls">Controls</a></li>
+        <li><a class="ds-nav__link" href="#data">Data display</a></li>
+        <li><a class="ds-nav__link" href="#feedback">Feedback</a></li>
+      </ul>
+    </nav>
+  </div>
+</header>
+
+<main id="main" class="ds-container">
+  <div class="ds-page-header">
+    <div class="ds-page-header__text">
+      <ol class="ds-breadcrumb" aria-label="Breadcrumb"><li>builda+</li><li>Internal</li></ol>
+      <h1 class="ds-page-header__title">Design system</h1>
+      <p class="ds-page-header__description">Tokens and components in <code>/static/design-system.css</code>. Reference page, available outside production only.</p>
+    </div>
+    <div class="ds-btn-group">
+      <a class="ds-btn ds-btn--secondary" href="/">View landing page</a>
+    </div>
+  </div>
+
+  <section id="tokens" class="dsp-section" aria-labelledby="t-title">
+    <h2 class="ds-h2" id="t-title">Tokens</h2>
+    <h3 class="ds-h4">Colour</h3>
+    <ul class="dsp-swatches">
+      <li><span class="dsp-swatch dsp-swatch--brand"></span><code>--ds-brand</code> Deep navy</li>
+      <li><span class="dsp-swatch dsp-swatch--accent"></span><code>--ds-accent</code> Muted green</li>
+      <li><span class="dsp-swatch dsp-swatch--bg"></span><code>--ds-bg</code> Warm white</li>
+      <li><span class="dsp-swatch dsp-swatch--sunken"></span><code>--ds-surface-sunken</code> Light grey</li>
+      <li><span class="dsp-swatch dsp-swatch--muted"></span><code>--ds-text-muted</code> Slate</li>
+      <li><span class="dsp-swatch dsp-swatch--warning"></span><code>--ds-warning</code></li>
+      <li><span class="dsp-swatch dsp-swatch--danger"></span><code>--ds-danger</code></li>
+      <li><span class="dsp-swatch dsp-swatch--info"></span><code>--ds-info</code></li>
+    </ul>
+    <h3 class="ds-h4">Type scale</h3>
+    <div class="ds-stack">
+      <p class="ds-display">Display heading</p>
+      <p class="ds-h1">Heading 1</p>
+      <p class="ds-h2">Heading 2</p>
+      <p class="ds-h3">Heading 3</p>
+      <p class="ds-lead">Lead paragraph for introductions and summaries.</p>
+      <p>Body text. The quick brown fox jumps over the lazy dog.</p>
+      <p class="ds-body-sm ds-muted">Small, muted supporting text.</p>
+      <p class="ds-eyebrow">Eyebrow label</p>
+    </div>
+    <h3 class="ds-h4">Spacing (4px base)</h3>
+    <ul class="dsp-spacing">
+      <li><span class="dsp-space dsp-space--2"></span>space-2 · 0.5rem</li>
+      <li><span class="dsp-space dsp-space--4"></span>space-4 · 1rem</li>
+      <li><span class="dsp-space dsp-space--6"></span>space-6 · 1.5rem</li>
+      <li><span class="dsp-space dsp-space--8"></span>space-8 · 2rem</li>
+      <li><span class="dsp-space dsp-space--12"></span>space-12 · 3rem</li>
+    </ul>
+  </section>
+
+  <section id="controls" class="dsp-section" aria-labelledby="c-title">
+    <h2 class="ds-h2" id="c-title">Controls</h2>
+    <h3 class="ds-h4">Buttons</h3>
+    <div class="ds-btn-group">
+      <button class="ds-btn ds-btn--primary" type="button">Primary</button>
+      <button class="ds-btn ds-btn--accent" type="button">Accent</button>
+      <button class="ds-btn ds-btn--secondary" type="button">Secondary</button>
+      <button class="ds-btn ds-btn--ghost" type="button">Ghost</button>
+      <button class="ds-btn ds-btn--primary ds-btn--sm" type="button">Small</button>
+      <button class="ds-btn ds-btn--primary ds-btn--lg" type="button">Large</button>
+      <button class="ds-btn ds-btn--primary" type="button" disabled>Disabled</button>
+    </div>
+    <h3 class="ds-h4">Form inputs</h3>
+    <div class="ds-form-grid">
+      <div class="ds-field">
+        <label class="ds-label" for="f-name">Firm name</label>
+        <input class="ds-input" id="f-name" placeholder="e.g. Example Mortgages Ltd">
+        <p class="ds-help">As registered with the FCA.</p>
+      </div>
+      <div class="ds-field">
+        <label class="ds-label" for="f-role">Role</label>
+        <select class="ds-select" id="f-role"><option>Case manager</option><option>Adviser</option><option>Administrator</option></select>
+      </div>
+      <div class="ds-field">
+        <label class="ds-label" for="f-vol">Applications per month</label>
+        <input class="ds-input" id="f-vol" inputmode="numeric" aria-invalid="true" aria-describedby="f-vol-err" value="lots">
+        <p class="ds-error" id="f-vol-err">Enter a number, for example 120.</p>
+      </div>
+      <div class="ds-field">
+        <label class="ds-label" for="f-dis">Disabled field</label>
+        <input class="ds-input" id="f-dis" disabled value="Not editable">
+      </div>
+      <div class="ds-field dsp-span">
+        <label class="ds-label" for="f-notes">Operational challenges <span class="ds-optional">(optional)</span></label>
+        <textarea class="ds-textarea" id="f-notes"></textarea>
+      </div>
+      <label class="ds-check"><input type="checkbox" checked> Share my name with management</label>
+    </div>
+  </section>
+
+  <section id="data" class="dsp-section" aria-labelledby="d-title">
+    <h2 class="ds-h2" id="d-title">Data display</h2>
+    <h3 class="ds-h4">Evidence badges</h3>
+    <div class="ds-cluster">
+      <span class="ds-evidence ds-evidence--firm-said">Firm said</span>
+      <span class="ds-evidence ds-evidence--measured">Measured</span>
+      <span class="ds-evidence ds-evidence--playbook">Playbook</span>
+      <span class="ds-evidence ds-evidence--public">Public record</span>
+      <span class="ds-evidence ds-evidence--assumption">Assumption</span>
+    </div>
+    <h3 class="ds-h4">Confidence indicators</h3>
+    <div class="ds-cluster dsp-gap">
+      <span class="ds-confidence" data-level="insufficient"><span class="ds-confidence__bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Insufficient</span>
+      <span class="ds-confidence" data-level="low"><span class="ds-confidence__bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Low</span>
+      <span class="ds-confidence" data-level="medium"><span class="ds-confidence__bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Medium</span>
+      <span class="ds-confidence" data-level="high"><span class="ds-confidence__bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>High</span>
+      <span class="ds-confidence" data-level="very-high"><span class="ds-confidence__bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Very high</span>
+    </div>
+    <h3 class="ds-h4">Classifications</h3>
+    <div class="ds-cluster">
+      <span class="ds-class ds-class--overhaul">Overhaul</span>
+      <span class="ds-class ds-class--fix">Fix</span>
+      <span class="ds-class ds-class--automate">Automate</span>
+      <span class="ds-class ds-class--keep-human">Keep human</span>
+    </div>
+    <h3 class="ds-h4">Status indicators</h3>
+    <div class="ds-cluster dsp-gap">
+      <span class="ds-status ds-status--neutral">Not started</span>
+      <span class="ds-status ds-status--info">In progress</span>
+      <span class="ds-status ds-status--success">Complete</span>
+      <span class="ds-status ds-status--warning">Needs attention</span>
+      <span class="ds-status ds-status--danger">Blocked</span>
+    </div>
+    <h3 class="ds-h4">Card</h3>
+    <article class="ds-card dsp-card">
+      <div class="ds-card__header">
+        <h4 class="ds-card__title">Manual chasing of outstanding documents</h4>
+        <span class="ds-class ds-class--automate">Automate</span>
+      </div>
+      <div class="ds-card__body ds-stack">
+        <dl class="ds-meta">
+          <dt>Stage</dt><dd>Documents</dd>
+          <dt>Reported by</dt><dd>Case manager, administrator</dd>
+          <dt>Evidence</dt><dd><span class="ds-evidence ds-evidence--firm-said">Firm said</span></dd>
+          <dt>Confidence</dt><dd><span class="ds-confidence" data-level="medium"><span class="ds-confidence__bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Medium</span></dd>
+        </dl>
+      </div>
+      <div class="ds-card__footer">
+        <button class="ds-btn ds-btn--secondary ds-btn--sm" type="button">Correct</button>
+        <button class="ds-btn ds-btn--primary ds-btn--sm" type="button">Validate</button>
+      </div>
+    </article>
+    <h3 class="ds-h4">Table</h3>
+    <div class="ds-table-wrap">
+      <table class="ds-table">
+        <caption>Example opportunities (sample data)</caption>
+        <thead><tr><th scope="col">Opportunity</th><th scope="col">Classification</th><th scope="col">Confidence</th><th scope="col" class="ds-table__num">Score</th><th scope="col">Status</th></tr></thead>
+        <tbody>
+          <tr><th scope="row">Document chasing</th><td><span class="ds-class ds-class--automate">Automate</span></td><td><span class="ds-confidence" data-level="medium"><span class="ds-confidence__bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Medium</span></td><td class="ds-table__num">—</td><td><span class="ds-status ds-status--info">In review</span></td></tr>
+          <tr><th scope="row">Application re-keying</th><td><span class="ds-class ds-class--fix">Fix</span></td><td><span class="ds-confidence" data-level="low"><span class="ds-confidence__bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span>Low</span></td><td class="ds-table__num">—</td><td><span class="ds-status ds-status--warning">Needs evidence</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="feedback" class="dsp-section" aria-labelledby="fb-title">
+    <h2 class="ds-h2" id="fb-title">Feedback</h2>
+    <h3 class="ds-h4">Alerts</h3>
+    <div class="ds-stack">
+      <div class="ds-alert ds-alert--info"><p class="ds-alert__title">Information</p><p>Follow-up questions have been sent to two participants.</p></div>
+      <div class="ds-alert ds-alert--success"><p class="ds-alert__title">Saved</p><p>Your correction has been recorded.</p></div>
+      <div class="ds-alert ds-alert--warning"><p class="ds-alert__title">Needs attention</p><p>This stage involves regulated judgement.</p></div>
+      <div class="ds-alert ds-alert--danger"><p class="ds-alert__title">Something went wrong</p><p>Nothing was saved. Please try again.</p></div>
+    </div>
+    <h3 class="ds-h4">Empty state</h3>
+    <div class="ds-empty">
+      <div class="ds-empty__icon" aria-hidden="true">+</div>
+      <p class="ds-empty__title">No discoveries yet</p>
+      <p class="ds-empty__text">Start a discovery to invite your team and see how work moves through your firm.</p>
+      <button class="ds-btn ds-btn--primary" type="button">Start a discovery</button>
+    </div>
+    <h3 class="ds-h4">Loading</h3>
+    <div class="ds-stack">
+      <p class="ds-loading" role="status"><span class="ds-spinner" aria-hidden="true"></span>Analysing interviews…</p>
+      <div class="ds-card ds-card__body ds-skeleton-stack" aria-hidden="true">
+        <span class="ds-skeleton ds-skeleton--title"></span>
+        <span class="ds-skeleton ds-skeleton--line"></span>
+        <span class="ds-skeleton ds-skeleton--short"></span>
+      </div>
+    </div>
+  </section>
+</main>
+</body>
+</html>

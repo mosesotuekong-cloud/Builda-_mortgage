@@ -1,7 +1,13 @@
+import { GuideService, GuideUnavailableError, loadGuideContent } from '../guide/service';
+import type { LLMProvider } from '../llm/provider';
+import { EngineeringService, ENGINEERING_GROUPS } from '../implementation/engineering';
+import { readiness, SOLUTION_TEMPLATES } from '../knowledge/solutionTemplates';
+import { briefToMarkdown, handoverBrief } from '../analysis/opportunityAssessment';
 import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { timingSafeEqual } from 'node:crypto';
 import { ZodError } from 'zod';
 import type { Db } from '../db/pool';
 import { NotFoundError, ConcurrencyError } from '../db/repositories';
@@ -25,25 +31,51 @@ export interface AppDeps {
   firmAuth: FirmLeadAuth;
   jadaAuth: JadaAuth;
   decisions: DecisionService;
+  engineering?: EngineeringService;
   jada: JadaService;
   knowledge?: KnowledgeService;
   signin?: SigninService;
+  // Plus, the in-app guide. llm null (or absent) = no AI: the browser falls back to its written answers.
+  guide?: { llm: LLMProvider | null };
   sessionSecret: string;
   consent: Omit<ConsentConfig, 'firmName'>;
   secureCookies: boolean;
   publicDir?: string;
+  // Private demo: when set, every request (pages, API, interview links) needs this password first.
+  // It sits in front of the demo sign-in, which on its own lets anyone pick any account.
+  accessGate?: { password: string };
 }
+
+// The browser's own password prompt (HTTP Basic). Any user name is accepted; only the password counts.
+const gateAllows = (header: string | undefined, password: string): boolean => {
+  const m = /^Basic\s+([A-Za-z0-9+/=]+)$/i.exec(header ?? '');
+  if (!m) return false;
+  const decoded = Buffer.from(m[1]!, 'base64').toString('utf8');
+  const given = Buffer.from(decoded.slice(decoded.indexOf(':') + 1));
+  const want = Buffer.from(password);
+  return given.length === want.length && timingSafeEqual(given, want);
+};
 
 const STATIC: Record<string, string> = {
   '/interview': 'interview.html', '/static/interview.js': 'interview.js',
   '/static/app.css': 'app.css', '/static/firm.js': 'firm.js', '/static/jada.js': 'jada.js', '/jada': 'jada.html', '/knowledge': 'knowledge.html', '/static/knowledge.js': 'knowledge.js',
-  '/': 'signin.html', '/static/signin.js': 'signin.js', '/firm': 'firm-home.html', '/static/firm-home.js': 'firm-home.js', '/static/session.js': 'session.js',
+  '/signin': 'signin.html', '/static/signin.js': 'signin.js', '/static/signin.css': 'signin.css', '/static/guide.js': 'guide.js', '/static/guide.css': 'guide.css', '/static/guide-content.json': 'guide-content.json', '/static/firm-home.js': 'firm-home.js', '/static/session.js': 'session.js',
+  // Public landing page and the shared design system (Phase 1).
+  '/': 'landing.html', '/static/landing.css': 'landing.css', '/static/landing.js': 'landing.js',
+  '/static/design-system.css': 'design-system.css', '/static/favicon.svg': 'favicon.svg',
+  // Firm workspace (Phase 2): one shell page; workspace.js renders the section named by the path.
+  '/app': 'app.html', '/static/workspace.js': 'workspace.js', '/static/workspace.css': 'workspace.css', '/static/discovery.js': 'discovery.js', '/static/opportunities.js': 'opportunities.js', '/static/engineering.js': 'engineering.js', '/jada/engineering': 'engineering.html',
+};
+// Internal design-system reference page: served only alongside the demo sign-in, never in production.
+const DEV_STATIC: Record<string, string> = {
+  '/design-system': 'design-system.html', '/static/design-system-page.css': 'design-system-page.css',
 };
 const FONTS = new Set(['SourceSerif4-Regular.ttf', 'SourceSerif4-Semibold.ttf', 'AtkinsonHyperlegible-Regular.ttf', 'AtkinsonHyperlegible-Bold.ttf']);
-const TYPES: Record<string, string> = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8' };
+const TYPES: Record<string, string> = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml', json: 'application/json; charset=utf-8' };
 
 export function buildApp(deps: AppDeps) {
   const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
+  const engineering = deps.engineering ?? new EngineeringService(deps.db, { analysis: deps.analysis, decisions: deps.decisions });
   app.register(cookie);
   // Browsers send "Content-Type: application/json" on button clicks with no body; treat that as {}.
   app.removeContentTypeParser('application/json');
@@ -53,9 +85,20 @@ export function buildApp(deps: AppDeps) {
     catch { done(Object.assign(new Error('The request body isn’t valid JSON.'), { statusCode: 400 }), undefined); }
   });
   const publicDir = deps.publicDir ?? join(process.cwd(), 'public');
+  const guide = new GuideService(deps.guide?.llm ?? null, loadGuideContent(publicDir));
   const cookieOpts = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: deps.secureCookies };
 
+  if (deps.accessGate) {
+    const { password } = deps.accessGate;
+    app.addHook('onRequest', async (req, reply) => {
+      if (req.url === '/healthz' || gateAllows(req.headers.authorization, password)) return;
+      return reply.code(401).header('www-authenticate', 'Basic realm="builda+ private demo", charset="UTF-8"')
+        .type('text/plain; charset=utf-8').send('This is a private builda+ demonstration. Ask JADA for the access password.');
+    });
+  }
+
   app.addHook('onSend', async (_req, reply) => {
+    if (deps.accessGate) reply.header('x-robots-tag', 'noindex, nofollow');
     reply.header('content-security-policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     reply.header('x-content-type-options', 'nosniff');
     reply.header('referrer-policy', 'no-referrer'); // invitation tokens must never leak via Referer
@@ -77,11 +120,27 @@ export function buildApp(deps: AppDeps) {
     return reply.code(500).send({ error: 'Something went wrong on our side. Nothing you typed was lost from this page — please try again.' });
   });
 
-  for (const [route, file] of Object.entries(STATIC)) {
-    app.get(route, async (_req, reply) => reply.type(TYPES[file.split('.').pop()!]!).send(readFileSync(join(publicDir, file))));
+  const demoSignin = deps.firmAuth instanceof DevCookieAuth && !!deps.signin;
+  const statics = deps.firmAuth instanceof DevCookieAuth ? { ...STATIC, ...DEV_STATIC } : STATIC;
+  for (const [route, file] of Object.entries(statics)) {
+    app.get(route, async (_req, reply) => {
+      const body = readFileSync(join(publicDir, file));
+      // The landing page's "Sign in" link is hidden unless a sign-in flow is actually available.
+      if (file === 'landing.html' && demoSignin) {
+        return reply.type(TYPES.html!).send(body.toString('utf8').replace('id="lp-signin" hidden>', 'id="lp-signin">'));
+      }
+      return reply.type(TYPES[file.split('.').pop()!]!).send(body);
+    });
   }
-  app.get('/firm/discoveries/:id', async (_req, reply) => reply.type(TYPES.html!).send(readFileSync(join(publicDir, 'firm.html'))));
+  // For the host's health check: says only that the server is up, so it's the one path outside the demo password.
+  app.get('/healthz', async () => ({ ok: true }));
+  app.get('/app/*', async (_req, reply) => reply.type(TYPES.html!).send(readFileSync(join(publicDir, 'app.html'))));
+  // Phase 6: the older firm pages duplicated the workspace in the earlier visual style. The routes stay, as redirects.
+  app.get('/firm', async (_req, reply) => reply.redirect('/app'));
+  app.get<{ Params: { id: string } }>('/firm/discoveries/:id', async (req, reply) =>
+    reply.redirect(/^[0-9a-f-]{36}$/.test(req.params.id) ? `/app/discovery/${req.params.id}/findings` : '/app/discovery'));
   app.get('/jada/discoveries/:id', async (_req, reply) => reply.type(TYPES.html!).send(readFileSync(join(publicDir, 'jada.html'))));
+  app.get('/jada/engineering/:id', async (_req, reply) => reply.type(TYPES.html!).send(readFileSync(join(publicDir, 'engineering.html'))));
   app.get<{ Params: { file: string } }>('/static/fonts/:file', async (req, reply) => {
     if (!FONTS.has(req.params.file)) return reply.code(404).send({ error: 'Not found.' });
     return reply.type('font/ttf').header('cache-control', 'public, max-age=31536000, immutable').send(readFileSync(join(publicDir, 'fonts', req.params.file)));
@@ -143,10 +202,48 @@ export function buildApp(deps: AppDeps) {
   app.post<P>('/api/firm/discoveries/:id/participants', async (req) => deps.firms.inviteParticipant(await lead(req), req.params.id, req.body));
   app.post<P>('/api/firm/discoveries/:id/participants/:pid/link', async (req) => deps.firms.newLink(await lead(req), req.params.id, req.params.pid!));
   app.get('/api/firm/discoveries', async (req) => ({ discoveries: await deps.firms.listDiscoveries(await lead(req)) }));
-  app.get<P>('/api/firm/discoveries/:id/progress', async (req) => ({ participants: await deps.firms.progress(await lead(req), req.params.id) }));
+  app.get('/api/firm/workspace', async (req) => deps.firms.workspace(await lead(req)));
+  // Plus, the in-app guide: anyone signed in (firm lead or JADA staff). Questions are not stored.
+  app.post('/api/guide/ask', async (req, reply) => {
+    const firm = await deps.firmAuth.authenticate(req).catch(() => null);
+    const jadaId = firm ? null : await deps.jadaAuth.authenticateJada(req).catch(() => null);
+    if (!firm && !jadaId) throw Object.assign(new Error('Sign in to continue.'), { statusCode: 401 });
+    try { return await guide.ask(firm ? { kind: 'firm', userId: firm.userId } : { kind: 'jada', userId: jadaId!.userId }, req.body); }
+    catch (err) { if (err instanceof GuideUnavailableError) return reply.code(503).send({ error: err.message, fallback: true }); throw err; }
+  });
+  app.get<P>('/api/firm/discoveries/:id/progress', async (req) => { const id = await lead(req); await deps.firms.ensureDiscovery(id, req.params.id); return { participants: await deps.firms.progress(id, req.params.id) }; });
   app.post<P>('/api/firm/discoveries/:id/analyse', async (req) => { await deps.analysis.analyse(await lead(req), req.params.id); return deps.analysis.playback(await lead(req), req.params.id); });
   app.post<P>('/api/firm/discoveries/:id/follow-ups', async (req) => deps.analysis.sendFollowUps(await lead(req), req.params.id));
-  app.get<P>('/api/firm/discoveries/:id/playback', async (req) => deps.analysis.playback(await lead(req), req.params.id));
+  app.get<P>('/api/firm/discoveries/:id/playback', async (req) => { const id = await lead(req); await deps.firms.ensureDiscovery(id, req.params.id); return deps.analysis.playback(id, req.params.id); });
+  // Phase 3: discovery workspace, evidence review and completion.
+  app.get<P>('/api/firm/discoveries/:id/workspace', async (req) => deps.analysis.discoveryWorkspace(await lead(req), req.params.id));
+  app.post<P>('/api/firm/discoveries/:id/evidence/:pid/review', async (req) => {
+    const id = await lead(req);
+    await deps.analysis.reviewEvidence(id, req.params.id, req.params.pid!, req.body);
+    return { ok: true };
+  });
+  app.post<P & { Body: { note?: string } }>('/api/firm/discoveries/:id/complete', async (req) =>
+    deps.analysis.completeDiscovery(await lead(req), req.params.id, String((req.body as any)?.note ?? '').slice(0, 2000)));
+  // Phase 4: opportunity intelligence, review decisions and the hand-over to JADA engineering review.
+  app.get<P>('/api/firm/discoveries/:id/opportunities', async (req) => deps.analysis.opportunityAssessments(await lead(req), req.params.id));
+  app.post<P>('/api/firm/discoveries/:id/opportunities/:pid/decision', async (req) => {
+    const id = await lead(req);
+    await deps.analysis.recordOpportunityDecision(id, req.params.id, req.params.pid!, req.body);
+    return { ok: true };
+  });
+  // Phase 5: any approved, ungated opportunity (fix, overhaul or automate) becomes an engineering submission.
+  app.post<P>('/api/firm/discoveries/:id/opportunities/:pid/engineering-review', async (req) =>
+    engineering.submit(await lead(req), req.params.id, req.params.pid!, String((req.body as any)?.note ?? '').slice(0, 2000)));
+  app.get<P>('/api/firm/discoveries/:id/engineering', async (req) => { const id = await lead(req); await deps.firms.ensureDiscovery(id, req.params.id); return { submissions: await engineering.forFirm(id, req.params.id) }; });
+  app.post<P>('/api/firm/discoveries/:id/engineering/:pid/information', async (req) =>
+    engineering.provideInformation(await lead(req), req.params.id, req.params.pid!, req.body));
+  app.get<P>('/api/firm/discoveries/:id/opportunities/:pid/brief.md', async (req, reply) => {
+    const intel = await deps.analysis.opportunityAssessments(await lead(req), req.params.id);
+    const o = intel.opportunities.find((x) => x.id === req.params.pid);
+    if (!o) throw Object.assign(new Error('Opportunity not found'), { statusCode: 404 });
+    return reply.type('text/markdown; charset=utf-8').header('content-disposition', 'attachment; filename="opportunity-brief.md"')
+      .send(briefToMarkdown(handoverBrief(o, intel.firmName)));
+  });
   app.post<P>('/api/firm/discoveries/:id/pain-points/:pid/corrections', async (req) => {
     const id = await lead(req);
     await deps.analysis.correct(id, req.params.id, req.params.pid!, req.body);
@@ -169,7 +266,7 @@ export function buildApp(deps: AppDeps) {
     return reply.type('application/pdf').header('content-disposition', `attachment; filename="${safe}-discovery-report-v${model.version}.pdf"`).send(pdf);
   });
   app.post<P>('/api/firm/discoveries/:id/approve', async (req) => deps.decisions.approve(await lead(req), req.params.id, req.body));
-  app.get<P>('/api/firm/discoveries/:id/implementation', async (req) => ({ packs: await deps.decisions.packStatus(await lead(req), req.params.id) }));
+  app.get<P>('/api/firm/discoveries/:id/implementation', async (req) => { const id = await lead(req); await deps.firms.ensureDiscovery(id, req.params.id); return { packs: await deps.decisions.packStatus(id, req.params.id) }; });
 
   // ---------- JADA engineering ----------
   const jadaUser = async (req: FastifyRequest) => {
@@ -177,9 +274,23 @@ export function buildApp(deps: AppDeps) {
     if (!id) throw Object.assign(new Error('Sign in as JADA staff to continue.'), { statusCode: 401 });
     return id.userId;
   };
+  // Phase 5: JADA engineering workspace. Row-level security limits every query to discoveries assigned to this engineer.
+  // Engineering controls are for JADA engineers only (other JADA roles have no engineering access).
+  const engineer = async (req: FastifyRequest) => {
+    const id = await jadaUser(req);
+    if (!(await deps.jada.isEngineer(id))) throw Object.assign(new Error('Only JADA engineers can use the engineering workspace.'), { statusCode: 403 });
+    return id;
+  };
+  app.get('/api/jada/engineering', async (req) => {
+    const id = await engineer(req);
+    return { submissions: await engineering.queue(id), unassigned: await deps.jada.queue(id), groups: ENGINEERING_GROUPS.map(({ key, label }) => ({ key, label })) };
+  });
+  app.get('/api/jada/engineering/templates', async (req) => { await engineer(req); return { templates: SOLUTION_TEMPLATES.map((t) => ({ ...t, readiness: readiness(t) })) }; });
+  app.get<P>('/api/jada/engineering/:id', async (req) => engineering.detail(await engineer(req), req.params.id));
+  app.post<{ Params: { id: string; action: string } }>('/api/jada/engineering/:id/:action', async (req) => engineering.act(await engineer(req), req.params.id, req.params.action, req.body));
   app.get('/api/jada/discoveries', async (req) => ({ discoveries: await deps.jada.assignedDiscoveries(await jadaUser(req)) }));
   app.get('/api/jada/queue', async (req) => ({ queue: await deps.jada.queue(await jadaUser(req)) }));
-  app.post<P>('/api/jada/discoveries/:id/pick-up', async (req) => { await deps.jada.pickUp(await jadaUser(req), req.params.id); return { ok: true }; });
+  app.post<P>('/api/jada/discoveries/:id/pick-up', async (req) => { await deps.jada.pickUp(await engineer(req), req.params.id); return { ok: true }; });
   app.get<P>('/api/jada/discoveries/:id', async (req) => deps.jada.discovery(await jadaUser(req), req.params.id));
   app.get<P>('/api/jada/packs/:id/markdown', async (req, reply) =>
     reply.type('text/markdown; charset=utf-8').header('content-disposition', `attachment; filename="implementation-pack-${req.params.id.slice(0, 8)}.md"`)
@@ -217,9 +328,9 @@ export function buildApp(deps: AppDeps) {
     const dev = deps.firmAuth, si = deps.signin;
     const signInAs = (reply: FastifyReply, e: { userId: string; kind: string; orgId: string | null; roles: string[] }) => {
       for (const c of ['bp_dev', 'bp_jada']) reply.clearCookie(c, { path: '/' });
-      if (e.kind === 'firm_lead' && e.orgId) { reply.setCookie('bp_dev', dev.cookieFor({ userId: e.userId, orgId: e.orgId }), cookieOpts); return '/firm'; }
+      if (e.kind === 'firm_lead' && e.orgId) { reply.setCookie('bp_dev', dev.cookieFor({ userId: e.userId, orgId: e.orgId }), cookieOpts); return '/app'; }
       reply.setCookie('bp_jada', dev.jadaCookieFor(e.userId), cookieOpts);
-      return e.roles.includes('engineer') ? '/jada' : '/knowledge';
+      return e.roles.includes('engineer') ? '/jada/engineering' : '/knowledge';
     };
     app.get('/api/signin/directory', async () => ({ accounts: await si.directory() }));
     app.post<{ Body: { userId?: string } }>('/api/signin', async (req, reply) => {

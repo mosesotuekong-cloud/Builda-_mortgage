@@ -37,6 +37,12 @@ export class FirmService {
     });
   }
 
+  // Row-level security already hides other firms' rows; this turns "nothing visible" into a clear 404.
+  async ensureDiscovery(ctx: FirmContext, discoveryId: string): Promise<void> {
+    const ok = await withFirmContext(this.db, ctx, async (tx) => (await tx.query('select 1 from discoveries where id = $1', [discoveryId])).rowCount === 1);
+    if (!ok) throw new NotFoundError('Discovery not found');
+  }
+
   async isFirmLead(ctx: FirmContext & { userId: string }): Promise<boolean> {
     return withFirmContext(this.db, ctx, async (tx) => {
       const r = await tx.query("select 1 from org_members where org_id = $1 and user_id = $2 and role = 'firm_lead'", [ctx.orgId, ctx.userId]);
@@ -48,12 +54,17 @@ export class FirmService {
     // Each discovery pins the knowledge release it starts with.
     const playbookVersion = this.cfg.currentPlaybookVersion ? await this.cfg.currentPlaybookVersion() : this.cfg.playbookVersion;
     return withFirmContext(this.db, ctx, async (tx) => {
+      // The profile is stored per discovery (a snapshot of the firm at that time). A new discovery starts from
+      // the firm's most recent profile, so starting a second discovery never blanks it. The lead confirms it
+      // (status stays 'profile' until saved). A firm-level profile table would need a schema change.
+      const prior = await tx.query(`select id, firm_profile from discoveries where firm_profile <> '{}'::jsonb order by created_at desc limit 1`);
       const r = await tx.query(
-        `insert into discoveries (org_id, status, playbook_version, scoring_config_version, created_by)
-         values ($1, 'profile', $2, $3, $4) returning id`,
-        [ctx.orgId, playbookVersion, DEFAULT_SCORING_CONFIG.version, ctx.userId]);
+        `insert into discoveries (org_id, status, playbook_version, scoring_config_version, created_by, firm_profile)
+         values ($1, 'profile', $2, $3, $4, $5) returning id`,
+        [ctx.orgId, playbookVersion, DEFAULT_SCORING_CONFIG.version, ctx.userId, prior.rows[0]?.firm_profile ?? {}]);
       const id = r.rows[0].id as string;
-      await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId: id, actor: `user:${ctx.userId}`, action: 'discovery.created', entityType: 'discovery', entityId: id, metadata: { playbookVersion } }]);
+      await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId: id, actor: `user:${ctx.userId}`, action: 'discovery.created', entityType: 'discovery', entityId: id,
+        metadata: { playbookVersion, profileCarriedFrom: prior.rows[0]?.id ?? null } }]);
       return id;
     });
   }
@@ -134,6 +145,44 @@ export class FirmService {
                 (select count(*)::int from interview_sessions s where s.discovery_id = d.id and s.kind = 'main' and s.status = 'completed') as completed
            from discoveries d order by d.created_at desc`);
       return r.rows.map((x) => ({ id: x.id, status: x.status, createdAt: x.created_at, hasProfile: x.has_profile, people: x.people, completed: x.completed }));
+    });
+  }
+
+  // Workspace overview (Phase 2): counts and state from existing tables, scoped to the firm by RLS.
+  // Activity is reduced to the action, its kind of actor and time: no names, pseudonyms or metadata.
+  async workspace(ctx: FirmContext) {
+    return withFirmContext(this.db, ctx, async (tx) => {
+      const org = await tx.query('select name from organisations where id = $1', [ctx.orgId]);
+      if (!org.rows[0]) throw new NotFoundError('Firm not found');
+      const d = await tx.query(
+        `select d.id, d.status, d.created_at, (d.firm_profile <> '{}'::jsonb) as has_profile,
+                (select count(*)::int from participants p where p.discovery_id = d.id) as people,
+                (select count(*)::int from interview_sessions s where s.discovery_id = d.id and s.kind = 'main' and s.status = 'completed') as completed,
+                (select count(*)::int from interview_sessions s where s.discovery_id = d.id and s.kind = 'main' and s.status in ('in_progress','paused')) as in_progress,
+                (select count(*)::int from evidence_records e where e.discovery_id = d.id) as evidence,
+                (select count(*)::int from pain_points pp where pp.discovery_id = d.id) as pain_points,
+                (select count(*)::int from pain_points pp where pp.discovery_id = d.id and not pp.validated_by_firm_lead) as awaiting_validation,
+                (select count(*)::int from opportunities o where o.discovery_id = d.id and o.rank is not null) as ranked,
+                (select count(*)::int from implementation_packs ip where ip.discovery_id = d.id) as packs,
+                (select max(created_at) from analysis_runs a where a.discovery_id = d.id) as analysed_at,
+                (select max(created_at) from reports r where r.discovery_id = d.id) as reported_at,
+                greatest(d.created_at, (select max(created_at) from audit_log l where l.discovery_id = d.id)) as updated_at
+           from discoveries d order by d.created_at desc`);
+      const latest = await tx.query('select id, firm_profile from discoveries order by created_at desc limit 1');
+      const parsed = latest.rows[0] ? FirmProfileSchema.safeParse(latest.rows[0].firm_profile) : null;
+      const activity = await tx.query(
+        `select action, entity_type, discovery_id, split_part(actor, ':', 1) as actor_kind, created_at
+           from audit_log order by created_at desc limit 15`);
+      return {
+        firmName: org.rows[0].name as string,
+        discoveries: d.rows.map((x) => ({
+          id: x.id, status: x.status, createdAt: x.created_at, updatedAt: x.updated_at, hasProfile: x.has_profile,
+          people: x.people, completed: x.completed, inProgress: x.in_progress, evidence: x.evidence, painPoints: x.pain_points,
+          awaitingValidation: x.awaiting_validation, ranked: x.ranked, packs: x.packs, analysedAt: x.analysed_at, reportedAt: x.reported_at,
+        })),
+        profile: latest.rows[0] ? { discoveryId: latest.rows[0].id as string, value: parsed?.success ? parsed.data : null } : null,
+        activity: activity.rows.map((a) => ({ action: a.action, entityType: a.entity_type, discoveryId: a.discovery_id, actorKind: a.actor_kind, at: a.created_at })),
+      };
     });
   }
 

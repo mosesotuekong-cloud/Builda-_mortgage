@@ -67,7 +67,11 @@ export function buildReportModel(p: { playback: Playback; profile: FirmProfile |
       improvement: x.improvements.length ? x.improvements : [x.classification ? CLASS_LABEL[x.classification] : 'To be agreed'],
       complexity: template ? `${template.typicalComplexity[0]!.toUpperCase()}${template.typicalComplexity.slice(1)} — based on the JADA template “${template.name}”` : 'Not yet assessed',
       assumptions: x.assumptions,
-      payback: 'Not calculated — implementation cost is not yet known.',
+      // Phase 4: the business case's own reason; unchanged default when it hasn't been worked out.
+      payback: x.impact?.businessCase?.payback?.months != null ? `${x.impact.businessCase.payback.months} months — ${x.impact.businessCase.payback.reason}`
+        : x.impact?.businessCase?.inputs?.implementationCostGBP?.value != null
+          ? (x.impact.businessCase.payback.reason as string).replace(/^Not calculated: /, 'Not calculated — ')
+          : 'Not calculated — implementation cost is not yet known.',
       unknowns: x.impact?.unknowns ?? [],
       requiresComplianceReview: x.requiresComplianceReview,
     };

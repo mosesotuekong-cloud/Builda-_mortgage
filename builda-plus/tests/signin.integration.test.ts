@@ -46,7 +46,7 @@ describe.skipIf(!APP || !ADMIN)('push-button sign-in, no email (Postgres)', () =
     const bad = await app.inject({ method: 'POST', url: '/api/signin/new-firm', payload: { firmName: '', yourName: '' } });
     expect(bad.statusCode).toBe(400);
     const res = await app.inject({ method: 'POST', url: '/api/signin/new-firm', payload: { firmName: 'Harbour Lane Mortgages', yourName: 'Lena' } });
-    expect(res.json()).toEqual({ next: '/firm' });
+    expect(res.json()).toEqual({ next: '/app' });
     lead = cookieFrom(res, 'bp_dev');
     const who = (await app.inject({ method: 'GET', url: '/api/whoami', headers: { cookie: lead } })).json();
     expect(who).toMatchObject({ name: 'Lena', kind: 'firm_lead', orgName: 'Harbour Lane Mortgages' });
@@ -54,7 +54,7 @@ describe.skipIf(!APP || !ADMIN)('push-button sign-in, no email (Postgres)', () =
 
   it('signs JADA staff in to the right place, and rejects unknown accounts', async () => {
     const e = await app.inject({ method: 'POST', url: '/api/signin', payload: { userId: engineer } });
-    expect(e.json()).toEqual({ next: '/jada' });
+    expect(e.json()).toEqual({ next: '/jada/engineering' });
     expect(cookieFrom(e, 'bp_jada')).toBeTruthy();
     expect((await app.inject({ method: 'POST', url: '/api/signin', payload: { userId: editor } })).json()).toEqual({ next: '/knowledge' });
     expect((await app.inject({ method: 'POST', url: '/api/signin', payload: { userId: randomUUID() } })).statusCode).toBe(404);
@@ -103,7 +103,8 @@ describe.skipIf(!APP || !ADMIN)('push-button sign-in, no email (Postgres)', () =
     const out = await app.inject({ method: 'GET', url: '/signout', headers: { cookie: lead } });
     expect(out.statusCode).toBe(303);
     expect(out.cookies.find((c: any) => c.name === 'bp_dev')?.value).toBe('');
-    for (const url of ['/', '/static/signin.js', '/firm', '/static/firm-home.js', '/static/session.js']) expect((await app.inject({ method: 'GET', url })).statusCode).toBe(200);
+    for (const url of ['/', '/static/signin.js', '/static/firm-home.js', '/static/session.js']) expect((await app.inject({ method: 'GET', url })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/firm' })).headers.location).toBe('/app');   // older page redirects to the workspace
   });
 
   it('push-button sign-in refuses to run in production', () => {

@@ -60,7 +60,7 @@ describe('discovery report', () => {
     expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
     const dir = mkdtempSync(join(tmpdir(), 'rep-'));
     writeFileSync(join(dir, 'r.pdf'), pdf);
-    const text = execFileSync('pdftotext', [join(dir, 'r.pdf'), '-']).toString().replace(/\s+/g, ' ');
+    const text = execFileSync('pdftotext', ['-enc', 'UTF-8', join(dir, 'r.pdf'), '-']).toString().replace(/\s+/g, ' ');
     for (const s of ['Harbour Lane Mortgages', 'Top opportunities', '£688', 'Case manager 10; Mortgage adviser 40', 'Points for compliance review', 'not approved by the FCA', 'Page 1 of'])
       expect(text).toContain(s);
     expect(text).toContain('“we chase about 150 a month — £-heavy work”');
@@ -77,7 +77,7 @@ describe('knowledge in outputs', () => {
     expect(m.disclaimers[0]).toMatch(/knowledge release 2026.11.1, approved/);
     const pdf = await renderReportPdf(m, { compress: false });
     const dir = mkdtempSync(join(tmpdir(), 'rep-')); writeFileSync(join(dir, 'r.pdf'), pdf);
-    const text = execFileSync('pdftotext', [join(dir, 'r.pdf'), '-']).toString().replace(/\s+/g, ' ');
+    const text = execFileSync('pdftotext', ['-enc', 'UTF-8', join(dir, 'r.pdf'), '-']).toString().replace(/\s+/g, ' ');
     expect(text).toContain('Not covered by the approved knowledge base');
     expect(text).toContain('Source: FCA Handbook: MCOB');
     expect(text).not.toContain('unreviewed development playbook');

@@ -13,7 +13,7 @@ const show = (...nodes) => root.replaceChildren(...nodes.filter((n) => n !== nul
 async function api(path, method = 'GET', body) {
   const res = await fetch(path, { method, headers: body ? { 'content-type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
   const data = await res.json().catch(() => ({}));
-  if (res.status === 401) { location.href = '/'; throw new Error('Please sign in.'); }
+  if (res.status === 401) { location.href = '/signin'; throw new Error('Please sign in.'); }
   if (!res.ok) throw new Error(data.issues ? `Please check: ${data.issues.map((i) => i.path || 'form').join(', ')}.` : (data.error || 'Something went wrong.'));
   return data;
 }
