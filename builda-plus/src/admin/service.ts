@@ -33,6 +33,17 @@ export class AdminService {
     } finally { this.creating = false; }
   }
 
+  // First start on a new server: no JADA accounts yet, so nobody could reach this page. Create the demo firm,
+  // which brings its "Demo Engineer (synthetic)" JADA account with it. Once any JADA account exists this does
+  // nothing, so deleting the demo firm later never brings it back on a restart.
+  async bootstrap(): Promise<'created' | 'skipped'> {
+    const jada = (await this.admin.query("select count(*)::int as n from app_users where kind = 'jada'")).rows[0].n;
+    if (jada > 0) return 'skipped';
+    if ((await this.admin.query('select 1 from organisations where name = $1', [DEMO_FIRM])).rowCount) return 'skipped';
+    await this.createDemo();
+    return 'created';
+  }
+
   async deleteFirm(orgId: string, confirmName: unknown, actor: string): Promise<{ deleted: string }> {
     if (!/^[0-9a-f-]{36}$/i.test(orgId)) throw Object.assign(new Error('That firm doesn’t exist.'), { statusCode: 404 });
     const org = (await this.admin.query('select id, name from organisations where id = $1', [orgId])).rows[0];

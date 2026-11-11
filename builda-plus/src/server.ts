@@ -109,4 +109,13 @@ const app = buildApp({
 });
 
 const port = Number(env('PORT', '3000'));
-app.listen({ port, host: '0.0.0.0' }).then(() => console.log(`BuildA+ listening on ${appBaseUrl}`));
+app.listen({ port, host: '0.0.0.0' }).then(() => {
+  console.log(`BuildA+ listening on ${appBaseUrl}`);
+  // A new server with no JADA accounts gets the complete demo firm (and its JADA account) on first start.
+  // Runs after the server is up, so a slow report never delays it. DEMO_BOOTSTRAP=off skips it.
+  if (admin && process.env.DEMO_BOOTSTRAP !== 'off') {
+    admin.bootstrap()
+      .then((r) => console.log(r === 'created' ? 'Demo set-up: created the demo firm and its JADA account (Demo Engineer).' : 'Demo set-up: JADA accounts already exist; nothing to do.'))
+      .catch((err) => console.error('Demo set-up failed:', err instanceof Error ? err.message : err));
+  }
+});

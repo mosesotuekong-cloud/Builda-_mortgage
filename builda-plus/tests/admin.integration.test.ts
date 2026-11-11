@@ -51,6 +51,11 @@ describe.skipIf(!APP || !ADMIN)('JADA admin (Postgres)', () => {
     expect((await app().inject({ method: 'POST', url: '/api/jada/admin/demo-firm', headers: { cookie: jada } })).statusCode).toBe(409);
   }, 120_000);
 
+  it('first-start set-up does nothing once a JADA account exists, so a deleted demo firm never comes back', async () => {
+    await admin.query("insert into app_users (id, display_name, kind) values ($1, 'Existing JADA person (test)', 'jada') on conflict do nothing", [randomUUID()]);
+    expect(await svc.bootstrap()).toBe('skipped');
+  });
+
   it('deletes a firm and everything in it only when its exact name is typed back', async () => {
     const demo = (await svc.firms()).find((f) => f.name === DEMO_FIRM)!;
     const del = (confirmName: unknown) => app().inject({ method: 'POST', url: `/api/jada/admin/firms/${demo.id}/delete`, headers: { cookie: jada }, payload: { confirmName } });
