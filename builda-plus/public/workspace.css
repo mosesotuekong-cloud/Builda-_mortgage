@@ -1,4 +1,4 @@
-/* builda+ firm workspace — application shell. Builds on design-system.css; classes use the ws- prefix. */
+/* BuildA+ firm workspace — application shell. Builds on design-system.css; classes use the ws- prefix. */
 
 .ws { min-height: 100vh; }
 .ws-layout { display: grid; grid-template-columns: 15.5rem minmax(0, 1fr); min-height: 100vh; }
@@ -8,10 +8,10 @@
 .ws-brand { display: flex; align-items: center; gap: var(--ds-space-2); padding: var(--ds-space-2) var(--ds-space-3) var(--ds-space-5); color: #FFFFFF; font-weight: var(--ds-weight-bold); font-size: var(--ds-text-lg); text-decoration: none; }
 .ws-brand:hover { text-decoration: none; color: #FFFFFF; }
 .ws-brand__mark { width: 1.35rem; height: 1.35rem; border-radius: 5px; background: #1F3E5E; position: relative; flex: none; }
-.ws-brand__mark::before, .ws-brand__mark::after { content: ""; position: absolute; background: #6FB497; border-radius: 1px; }
+.ws-brand__mark::before, .ws-brand__mark::after { content: ""; position: absolute; background: var(--ds-ember-400); border-radius: 1px; }
 .ws-brand__mark::before { left: 50%; top: 22%; bottom: 22%; width: 2.5px; transform: translateX(-50%); }
 .ws-brand__mark::after { top: 50%; left: 22%; right: 22%; height: 2.5px; transform: translateY(-50%); }
-.ws-brand__plus { color: #6FB497; }
+.ws-brand__plus { color: var(--ds-ember-400); }
 .ws-nav { display: grid; gap: var(--ds-space-5); }
 .ws-nav__group { display: grid; gap: 2px; }
 .ws-nav__heading { font-size: 0.6875rem; font-weight: var(--ds-weight-semibold); letter-spacing: var(--ds-tracking-wide); text-transform: uppercase; color: #7F93A8; padding: 0 var(--ds-space-3) var(--ds-space-1); margin: 0; }

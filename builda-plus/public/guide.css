@@ -1,5 +1,5 @@
-/* builda+ guide: an original animated helper ("Plus") in the corner of every signed-in page.
-   Not AI: answers come from the help written into builda+. Animations stop for prefers-reduced-motion. */
+/* BuildA+ guide: an original animated helper ("Plus") in the corner of every signed-in page.
+   Not AI: answers come from the help written into BuildA+. Animations stop for prefers-reduced-motion. */
 .gd { position: fixed; right: 1.25rem; bottom: calc(var(--gd-lift, 0px) + 1.25rem); z-index: 65; display: flex; align-items: flex-end; gap: 0.6rem; pointer-events: none; }
 .gd > * { pointer-events: auto; }
 

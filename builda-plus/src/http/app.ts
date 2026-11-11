@@ -1,4 +1,4 @@
-import { GuideService, GuideUnavailableError, loadGuideContent } from '../guide/service';
+import { GuideService, GuideUnavailableError, loadGuideContent, LATER_STAGE_GUIDE_KEYS } from '../guide/service';
 import type { LLMProvider } from '../llm/provider';
 import { EngineeringService, ENGINEERING_GROUPS } from '../implementation/engineering';
 import { readiness, SOLUTION_TEMPLATES } from '../knowledge/solutionTemplates';
@@ -7,15 +7,21 @@ import Fastify, { type FastifyReply, type FastifyRequest } from 'fastify';
 import cookie from '@fastify/cookie';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { timingSafeEqual } from 'node:crypto';
+import { createHash, timingSafeEqual } from 'node:crypto';
+import { RateLimiter } from './rateLimit';
+import { DemoRequestService, type DemoNotify } from '../demo/requests';
 import { ZodError } from 'zod';
-import type { Db } from '../db/pool';
+import { withJadaContext, type Db } from '../db/pool';
+import { loadKnowledge } from '../understanding/store';
+import { knowledgeView } from '../understanding/view';
+import { MORTGAGE_PACK } from '../understanding/packs/mortgage';
 import { NotFoundError, ConcurrencyError } from '../db/repositories';
 import { InterviewService, ConsentRequiredError, SessionClosedError, InterviewTurnFailedError, MessageTooLongError } from '../interview/service';
 import { FirmService, ParticipantAccessService, ConsentVersionError } from '../firm/service';
 import { AnalysisService } from '../analysis/service';
 import { CONSENT_VERSION, consentSections, type ConsentConfig } from '../participant/consent';
 import { signParticipant, verifyParticipant, type ParticipantPrincipal } from './tokens';
+import type { AdminService } from '../admin/service';
 import { DevCookieAuth, type FirmLeadAuth, type FirmLeadIdentity, type JadaAuth } from './auth';
 import { DecisionService, JadaService } from '../implementation/service';
 import { renderReportPdf } from '../report/pdf';
@@ -41,27 +47,43 @@ export interface AppDeps {
   consent: Omit<ConsentConfig, 'firmName'>;
   secureCookies: boolean;
   publicDir?: string;
-  // Private demo: when set, every request (pages, API, interview links) needs this password first.
-  // It sits in front of the demo sign-in, which on its own lets anyone pick any account.
-  accessGate?: { password: string };
+  // Set by whoever hosts BuildA+. The sign-in page asks for it before showing any account; the public
+  // pages (landing, book a demo) and interview links stay open. Without it, sign-in is open (this computer only).
+  signinPassword?: string;
+  // Behind a hosting proxy (Railway): read the visitor's address from X-Forwarded-For, for rate limiting.
+  trustProxy?: boolean;
+  // Emails the JADA team about each "Book a demo" request. Optional.
+  demoNotify?: DemoNotify;
+  // What we sell first is the discovery: it ends at the report and the opportunities. Everything after
+  // that (engineering workspace, implementation, impact, knowledge editor) is parked behind this switch,
+  // not deleted. Off unless set.
+  laterStages?: boolean;
+  // The JADA admin page (all firms, the saved demo firm, deleting a firm). Only outside production, and only
+  // when the administrator connection is configured.
+  admin?: AdminService;
 }
 
-// The browser's own password prompt (HTTP Basic). Any user name is accepted; only the password counts.
-const gateAllows = (header: string | undefined, password: string): boolean => {
-  const m = /^Basic\s+([A-Za-z0-9+/=]+)$/i.exec(header ?? '');
-  if (!m) return false;
-  const decoded = Buffer.from(m[1]!, 'base64').toString('utf8');
-  const given = Buffer.from(decoded.slice(decoded.indexOf(':') + 1));
-  const want = Buffer.from(password);
-  return given.length === want.length && timingSafeEqual(given, want);
-};
+// Pages and API routes that belong to the parked later stages. They answer 404 while the switch is off.
+// (/app/implementation and /app/impact are workspace pages: the workspace shows its own "Page not found" for them.)
+const LATER_STAGE_PATHS = [
+  /^\/(jada\/engineering|knowledge)(\/|$)/,
+  /^\/api\/(jada\/(engineering|packs)|knowledge)(\/|$)/,
+  /^\/api\/firm\/discoveries\/[^/]+\/(engineering|implementation)(\/|$)/,
+  /^\/api\/firm\/discoveries\/[^/]+\/opportunities\/[^/]+\/(engineering-review|brief\.md)$/,
+];
+export const isLaterStagePath = (url: string) => { const path = url.split('?')[0]!; return LATER_STAGE_PATHS.some((re) => re.test(path)); };
+
+// Compares hashes, so the time taken says nothing about the password's length or content.
+const samePassword = (given: string, want: string): boolean =>
+  timingSafeEqual(createHash('sha256').update(given).digest(), createHash('sha256').update(want).digest());
 
 const STATIC: Record<string, string> = {
   '/interview': 'interview.html', '/static/interview.js': 'interview.js',
-  '/static/app.css': 'app.css', '/static/firm.js': 'firm.js', '/static/jada.js': 'jada.js', '/jada': 'jada.html', '/knowledge': 'knowledge.html', '/static/knowledge.js': 'knowledge.js',
-  '/signin': 'signin.html', '/static/signin.js': 'signin.js', '/static/signin.css': 'signin.css', '/static/guide.js': 'guide.js', '/static/guide.css': 'guide.css', '/static/guide-content.json': 'guide-content.json', '/static/firm-home.js': 'firm-home.js', '/static/session.js': 'session.js',
+  '/static/app.css': 'app.css', '/static/jada.js': 'jada.js', '/jada': 'jada.html', '/jada/admin': 'admin.html', '/static/admin.js': 'admin.js', '/knowledge': 'knowledge.html', '/static/knowledge.js': 'knowledge.js',
+  '/signin': 'signin.html', '/static/signin.js': 'signin.js', '/static/signin.css': 'signin.css', '/static/guide.js': 'guide.js', '/static/guide.css': 'guide.css', '/static/guide-content.json': 'guide-content.json', '/static/session.js': 'session.js',
   // Public landing page and the shared design system (Phase 1).
   '/': 'landing.html', '/static/landing.css': 'landing.css', '/static/landing.js': 'landing.js',
+  '/demo': 'demo.html', '/static/demo.css': 'demo.css', '/static/demo.js': 'demo.js',
   '/static/design-system.css': 'design-system.css', '/static/favicon.svg': 'favicon.svg',
   // Firm workspace (Phase 2): one shell page; workspace.js renders the section named by the path.
   '/app': 'app.html', '/static/workspace.js': 'workspace.js', '/static/workspace.css': 'workspace.css', '/static/discovery.js': 'discovery.js', '/static/opportunities.js': 'opportunities.js', '/static/engineering.js': 'engineering.js', '/jada/engineering': 'engineering.html',
@@ -74,7 +96,7 @@ const FONTS = new Set(['SourceSerif4-Regular.ttf', 'SourceSerif4-Semibold.ttf', 
 const TYPES: Record<string, string> = { html: 'text/html; charset=utf-8', js: 'text/javascript; charset=utf-8', css: 'text/css; charset=utf-8', svg: 'image/svg+xml', json: 'application/json; charset=utf-8' };
 
 export function buildApp(deps: AppDeps) {
-  const app = Fastify({ logger: false, bodyLimit: 64 * 1024 });
+  const app = Fastify({ logger: false, bodyLimit: 64 * 1024, trustProxy: deps.trustProxy ?? false });
   const engineering = deps.engineering ?? new EngineeringService(deps.db, { analysis: deps.analysis, decisions: deps.decisions });
   app.register(cookie);
   // Browsers send "Content-Type: application/json" on button clicks with no body; treat that as {}.
@@ -85,20 +107,15 @@ export function buildApp(deps: AppDeps) {
     catch { done(Object.assign(new Error('The request body isn’t valid JSON.'), { statusCode: 400 }), undefined); }
   });
   const publicDir = deps.publicDir ?? join(process.cwd(), 'public');
-  const guide = new GuideService(deps.guide?.llm ?? null, loadGuideContent(publicDir));
+  const guide = new GuideService(deps.guide?.llm ?? null, loadGuideContent(publicDir), { hidden: deps.laterStages ? [] : LATER_STAGE_GUIDE_KEYS });
   const cookieOpts = { path: '/', httpOnly: true, sameSite: 'lax' as const, secure: deps.secureCookies };
 
-  if (deps.accessGate) {
-    const { password } = deps.accessGate;
-    app.addHook('onRequest', async (req, reply) => {
-      if (req.url === '/healthz' || gateAllows(req.headers.authorization, password)) return;
-      return reply.code(401).header('www-authenticate', 'Basic realm="builda+ private demo", charset="UTF-8"')
-        .type('text/plain; charset=utf-8').send('This is a private builda+ demonstration. Ask JADA for the access password.');
-    });
-  }
+  const demoRequests = new DemoRequestService(deps.db, deps.demoNotify ?? null);
+
+  const laterStages = deps.laterStages ?? false;
+  if (!laterStages) app.addHook('onRequest', async (req, reply) => { if (isLaterStagePath(req.url)) return reply.code(404).send({ error: 'Not found.' }); });
 
   app.addHook('onSend', async (_req, reply) => {
-    if (deps.accessGate) reply.header('x-robots-tag', 'noindex, nofollow');
     reply.header('content-security-policy', "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'");
     reply.header('x-content-type-options', 'nosniff');
     reply.header('referrer-policy', 'no-referrer'); // invitation tokens must never leak via Referer
@@ -132,7 +149,7 @@ export function buildApp(deps: AppDeps) {
       return reply.type(TYPES[file.split('.').pop()!]!).send(body);
     });
   }
-  // For the host's health check: says only that the server is up, so it's the one path outside the demo password.
+  // For the host's health check: says only that the server is up.
   app.get('/healthz', async () => ({ ok: true }));
   app.get('/app/*', async (_req, reply) => reply.type(TYPES.html!).send(readFileSync(join(publicDir, 'app.html'))));
   // Phase 6: the older firm pages duplicated the workspace in the earlier visual style. The routes stay, as redirects.
@@ -202,7 +219,7 @@ export function buildApp(deps: AppDeps) {
   app.post<P>('/api/firm/discoveries/:id/participants', async (req) => deps.firms.inviteParticipant(await lead(req), req.params.id, req.body));
   app.post<P>('/api/firm/discoveries/:id/participants/:pid/link', async (req) => deps.firms.newLink(await lead(req), req.params.id, req.params.pid!));
   app.get('/api/firm/discoveries', async (req) => ({ discoveries: await deps.firms.listDiscoveries(await lead(req)) }));
-  app.get('/api/firm/workspace', async (req) => deps.firms.workspace(await lead(req)));
+  app.get('/api/firm/workspace', async (req) => ({ ...(await deps.firms.workspace(await lead(req))), features: { laterStages } }));
   // Plus, the in-app guide: anyone signed in (firm lead or JADA staff). Questions are not stored.
   app.post('/api/guide/ask', async (req, reply) => {
     const firm = await deps.firmAuth.authenticate(req).catch(() => null);
@@ -292,6 +309,13 @@ export function buildApp(deps: AppDeps) {
   app.get('/api/jada/queue', async (req) => ({ queue: await deps.jada.queue(await jadaUser(req)) }));
   app.post<P>('/api/jada/discoveries/:id/pick-up', async (req) => { await deps.jada.pickUp(await engineer(req), req.params.id); return { ok: true }; });
   app.get<P>('/api/jada/discoveries/:id', async (req) => deps.jada.discovery(await jadaUser(req), req.params.id));
+  // What the knowledge engine has understood about an assigned discovery: by role, no quotes (read-only).
+  app.get<P>('/api/jada/discoveries/:id/knowledge', async (req) => {
+    const userId = await jadaUser(req);
+    const k = await withJadaContext(deps.db, userId, (tx) => loadKnowledge(tx, req.params.id));
+    const probed = new Set(k.gaps.filter((g) => g.predicate === 'variation' && g.status === 'answered').map((g) => g.subjectId));
+    return knowledgeView({ nodes: k.nodes, claims: k.claims, evidence: k.evidence }, MORTGAGE_PACK, probed);
+  });
   app.get<P>('/api/jada/packs/:id/markdown', async (req, reply) =>
     reply.type('text/markdown; charset=utf-8').header('content-disposition', `attachment; filename="implementation-pack-${req.params.id.slice(0, 8)}.md"`)
       .send(await deps.jada.packMarkdown(await jadaUser(req), req.params.id)));
@@ -321,24 +345,76 @@ export function buildApp(deps: AppDeps) {
 
   // ---------- push-button sign-in (demo mode only) ----------
   app.get('/signout', async (_req, reply) => {
-    for (const c of ['bp_dev', 'bp_jada']) reply.clearCookie(c, { path: '/' });
+    // Every identity this browser holds is cleared, including an interview tested earlier (bp_p), so a new
+    // firm never sees another firm's interview.
+    for (const c of ['bp_dev', 'bp_jada', 'bp_p']) reply.clearCookie(c, { path: '/' });
     return reply.redirect('/', 303);
   });
+  // ---------- book a demo (public) ----------
+  const demoLimit = new RateLimiter(5, 60 * 60 * 1000);
+  app.post<{ Body: Record<string, unknown> }>('/api/demo-requests', async (req, reply) => {
+    // A hidden field people never see; bots fill it in. Pretend it worked.
+    if (typeof req.body?.website === 'string' && req.body.website.trim()) return reply.code(201).send({ ok: true, name: '' });
+    if (demoLimit.blocked(req.ip)) return reply.code(429).send({ error: 'We’ve had a few requests from you already. Please try again in an hour, or email JADA directly.' });
+    const r = await demoRequests.create(req.body);
+    demoLimit.hit(req.ip);
+    return reply.code(201).send({ ok: true, name: r.name });
+  });
+  app.get('/api/jada/demo-requests', async (req) => { await jadaUser(req); return { requests: await demoRequests.list() }; });
+
+  // ---------- JADA admin: every firm, the saved demo firm, deleting a firm ----------
+  const adminSvc = async (req: FastifyRequest) => {
+    const id = await jadaUser(req);
+    if (!deps.admin) throw Object.assign(new Error('The admin tools aren’t switched on here: they need DATABASE_ADMIN_URL, and are never available in production.'), { statusCode: 404 });
+    return { id, admin: deps.admin };
+  };
+  app.get('/api/jada/admin/firms', async (req) => { const { admin } = await adminSvc(req); return { firms: await admin.firms() }; });
+  app.post('/api/jada/admin/demo-firm', async (req, reply) => { const { admin } = await adminSvc(req); return reply.code(201).send(await admin.createDemo()); });
+  app.post<{ Params: { id: string }; Body: { confirmName?: unknown } }>('/api/jada/admin/firms/:id/delete', async (req) => {
+    const { id, admin } = await adminSvc(req);
+    return admin.deleteFirm(req.params.id, req.body?.confirmName, `jada:${id}`);
+  });
+
   if (deps.firmAuth instanceof DevCookieAuth && deps.signin) {
     const dev = deps.firmAuth, si = deps.signin;
+    // The sign-in password (set by the host). Unlocking sets a signed cookie for 12 hours; until then the
+    // account list and every sign-in action answer 401.
+    const password = deps.signinPassword ?? null;
+    const unlockLimit = new RateLimiter(10, 15 * 60 * 1000);
+    const UNLOCK = 'signin-unlocked';
+    const unlocked = (req: FastifyRequest) => !password || verifyParticipant(req.cookies['bp_signin'], deps.sessionSecret)?.discoveryId === UNLOCK;
+    const mustBeUnlocked = async (req: FastifyRequest) => {
+      if (!unlocked(req)) throw Object.assign(new Error('Enter the sign-in password first.'), { statusCode: 401 });
+    };
+    app.get('/api/signin/status', async (req) => ({ passwordRequired: !!password, unlocked: unlocked(req) }));
+    app.post<{ Body: { password?: unknown } }>('/api/signin/unlock', async (req, reply) => {
+      if (!password) return { ok: true };
+      if (unlockLimit.blocked(req.ip)) return reply.code(429).send({ error: 'Too many attempts. Please wait 15 minutes and try again.' });
+      if (typeof req.body?.password !== 'string' || !samePassword(req.body.password, password)) {
+        unlockLimit.hit(req.ip);
+        return reply.code(401).send({ error: 'That password isn’t right.' });
+      }
+      unlockLimit.clear(req.ip);
+      reply.setCookie('bp_signin', signParticipant({ participantId: 'signin', orgId: '', discoveryId: UNLOCK }, deps.sessionSecret, 60 * 60 * 12), cookieOpts);
+      return { ok: true };
+    });
     const signInAs = (reply: FastifyReply, e: { userId: string; kind: string; orgId: string | null; roles: string[] }) => {
-      for (const c of ['bp_dev', 'bp_jada']) reply.clearCookie(c, { path: '/' });
+      // Every identity this browser holds is cleared, including an interview tested earlier (bp_p), so a new
+    // firm never sees another firm's interview.
+    for (const c of ['bp_dev', 'bp_jada', 'bp_p']) reply.clearCookie(c, { path: '/' });
       if (e.kind === 'firm_lead' && e.orgId) { reply.setCookie('bp_dev', dev.cookieFor({ userId: e.userId, orgId: e.orgId }), cookieOpts); return '/app'; }
       reply.setCookie('bp_jada', dev.jadaCookieFor(e.userId), cookieOpts);
+      if (!laterStages) return '/jada';
       return e.roles.includes('engineer') ? '/jada/engineering' : '/knowledge';
     };
-    app.get('/api/signin/directory', async () => ({ accounts: await si.directory() }));
+    app.get('/api/signin/directory', async (req) => { await mustBeUnlocked(req); return { accounts: await si.directory() }; });
     app.post<{ Body: { userId?: string } }>('/api/signin', async (req, reply) => {
+      await mustBeUnlocked(req);
       const e = await si.find(String(req.body?.userId ?? ''));
       if (!e) throw Object.assign(new Error('That account no longer exists.'), { statusCode: 404 });
       return { next: signInAs(reply, e) };
     });
-    app.post('/api/signin/new-firm', async (req, reply) => ({ next: signInAs(reply, await si.newFirm(req.body)) }));
+    app.post('/api/signin/new-firm', async (req, reply) => { await mustBeUnlocked(req); return { next: signInAs(reply, await si.newFirm(req.body)) }; });
     app.get('/api/whoami', async (req) => {
       const f = await deps.firmAuth.authenticate(req);
       const j = await deps.jadaAuth.authenticateJada(req);
@@ -348,7 +424,8 @@ export function buildApp(deps: AppDeps) {
   }
 
   // ---------- development login ----------
-  if (deps.firmAuth instanceof DevCookieAuth) {
+  // Sign-in by URL, for scripts on this computer. Never when a sign-in password is set: it would get round it.
+  if (deps.firmAuth instanceof DevCookieAuth && !deps.signinPassword) {
     const dev = deps.firmAuth;
     app.get<{ Querystring: { userId: string; orgId: string; next?: string } }>('/dev/login', async (req, reply) => {
       reply.setCookie('bp_dev', dev.cookieFor({ userId: req.query.userId, orgId: req.query.orgId }), cookieOpts);

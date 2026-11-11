@@ -18,7 +18,7 @@ describe('landing page and design system routes', () => {
     const app = buildApp(base({}));
     const home = await app.inject({ method: 'GET', url: '/' });
     expect(home.statusCode).toBe(200);
-    expect(home.body).toContain('Your mortgage operation has opportunities hiding in plain sight.');
+    expect(home.body).toContain('Your mortgage operation has opportunities <span class="lp-pop">hiding in plain sight.</span>');
     expect(home.body).toContain('Not everything needs AI.');
     expect(home.headers['content-security-policy']).toContain("script-src 'self'");
     const signin = await app.inject({ method: 'GET', url: '/signin' });
@@ -53,7 +53,7 @@ describe('landing page and design system routes', () => {
 
   it('makes no claims the product cannot support', async () => {
     const body = (await buildApp(base({})).inject({ method: 'GET', url: '/' })).body;
-    expect(body).toContain('builda+ is not approved or endorsed by the FCA');
+    expect(body).toContain('BuildA+ is not approved or endorsed by the FCA');
     expect(body).not.toMatch(/FCA[- ]approved|authorised and regulated by the FCA/i);
     expect(body).not.toMatch(/testimonial|trusted by \d|\d+% (faster|reduction|saving)/i);
     expect(body).toContain('Illustrative example');

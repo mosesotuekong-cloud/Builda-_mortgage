@@ -3,15 +3,30 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Sign in — builda+</title>
+<title>Sign in — BuildA+</title>
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/design-system.css">
 <link rel="stylesheet" href="/static/signin.css">
 <script src="/static/signin.js" defer></script>
 </head>
 <body class="ds-base si-body">
-<main class="si-shell" id="root">
-  <p class="ds-loading" role="status"><span class="ds-spinner" aria-hidden="true"></span>Loading…</p>
-</main>
+<div class="si-layout">
+  <aside class="si-side" aria-label="About BuildA+">
+    <a class="si-brand" href="/" aria-label="BuildA+ home"><span class="si-mark" aria-hidden="true"></span><span>BuildA<span class="si-plus">+</span></span></a>
+    <div class="si-side__body">
+      <p class="si-side__eyebrow">Operational intelligence for mortgage firms</p>
+      <p class="si-side__title">See how work really moves through your firm, <span class="si-pop">and what to change.</span></p>
+      <ul class="si-side__points">
+        <li>Interviews with the people who do the work</li>
+        <li>Findings backed by evidence, with a confidence level</li>
+        <li>A clear recommendation for each: overhaul, fix, automate or keep human</li>
+      </ul>
+    </div>
+    <p class="si-side__foot">BuildA+ does not give mortgage advice. Implementation delivered with JADA.</p>
+  </aside>
+  <main class="si-main" id="root">
+    <p class="ds-loading" role="status"><span class="ds-spinner" aria-hidden="true"></span>Loading…</p>
+  </main>
+</div>
 </body>
 </html>

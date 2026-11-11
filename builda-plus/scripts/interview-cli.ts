@@ -21,7 +21,7 @@ const llm = new BudgetedProvider(new OpenAIProvider(), ledger, {
 
 const rl = readline.createInterface({ input: stdin, output: stdout });
 let { state, reply } = startInterview({ discoveryId: 'demo', participantRef: 'P1', role });
-console.log(`\n[builda+ interview — role: ${role}. Type /pause to pause, /quit to stop]\n`);
+console.log(`\n[BuildA+ interview — role: ${role}. Type /pause to pause, /quit to stop]\n`);
 
 while (state.status === 'in_progress') {
   console.log(`\nInterviewer: ${reply}\n`);

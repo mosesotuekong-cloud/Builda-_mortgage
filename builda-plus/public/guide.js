@@ -1,6 +1,6 @@
 'use strict';
-// builda+ guide: "Plus", an original animated helper on every signed-in page.
-// Help text lives in /static/guide-content.json (shared with the server). Questions go to builda+'s own
+// BuildA+ guide: "Plus", an original animated helper on every signed-in page.
+// Help text lives in /static/guide-content.json (shared with the server). Questions go to BuildA+'s own
 // /api/guide/ask, which answers with AI grounded ONLY in that help (never firm data). If the AI isn't
 // available, Plus answers from the written help in the browser. Greetings are answered instantly here.
 (() => {
@@ -82,7 +82,8 @@
     const base = norm(q).split(' ').filter((w) => (w === 'ai' || w.length > 2) && !STOP.has(w));
     const words = [...new Set([...base, ...base.flatMap((w) => SYN[w] || [])])];
     if (!words.length) return [];
-    const all = [...content.global.map((x) => ({ ...x, from: null })), ...Object.entries(content.pages).flatMap(([k, p]) => p.faqs.map((x) => ({ ...x, from: k })))];
+    const all = [...content.global.map((x) => ({ ...x, from: null })), ...Object.entries(content.pages).flatMap(([k, p]) => p.faqs.map((x) => ({ ...x, from: k }))),
+      ...(content.terms || []).map((t) => ({ q: `What does “${t.term}” mean?`, a: t.meaning, from: null }))];
     const has = (text, w) => { const t = text.toLowerCase().replace(/[’']/g, ''); return w.length <= 3 ? new RegExp(`(^|[^a-z0-9])${w}($|[^a-z0-9])`).test(t) : t.includes(w.length > 4 ? w.slice(0, -1) : w); };
     const key = (s) => s.toLowerCase().replace(/\b(the|a|an)\b|[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
     return all.map((x) => ({ ...x, score: words.reduce((s, w) => s + (has(x.q, w) ? 3 : 0) + (has(x.a, w) ? 1 : 0), 0) }))
@@ -102,7 +103,7 @@
     const q = norm(raw);
     const r = (text, ...actions) => ({ text, actions: actions.filter(Boolean), suggestions: [] });
     if (/^(hi+|hello+|hey+|hiya|howdy|yo|greetings|good (morning|afternoon|evening)|morning|afternoon|evening)( there| plus| builda)?$/.test(q))
-      return { ...r('Hi! I’m Plus. Ask me anything about using builda+, or tell me where you’d like to go.'), suggestions: SUGGEST };
+      return { ...r('Hi! I’m Plus. Ask me anything about using BuildA+, or tell me where you’d like to go.'), suggestions: SUGGEST };
     if (/^(ok |okay |great |perfect )?(thanks|thank you|thank u|thankyou|cheers|ta)( (very much|a lot|plus|so much))?$/.test(q)) return r('You’re welcome! I’m here on every page whenever you need me.');
     if (/^(bye|goodbye|see you|see ya|later|cya)\b/.test(q)) return r('Bye for now! Click me any time you need help.');
     if (!fallback) return null;
@@ -113,7 +114,8 @@
       return r(p && p.next ? `From here: ${p.next}` : 'The Overview always shows your single next step.', onJada ? null : goAction('overview'));
     }
     const NAV = /^(go( to)?|take me( to)?|open|show( me)?|navigate( to)?|get me to|bring me to|jump to)\b|\b(where (is|are|can i find|do i find|do i go|do i)|how do i (get|go) to|how do i find|link to)\b/;
-    const key = placeKeys.find((k) => PLACES[k].words.some((w) => new RegExp(`(^| )${norm(w).replace(/-/g, '[- ]?')}( |$)`).test(q)));
+    const parked = (window.BUILDA_FEATURES && !window.BUILDA_FEATURES.laterStages) ? ['implementation', 'impact'] : [];
+    const key = placeKeys.filter((k) => !parked.includes(k)).find((k) => PLACES[k].words.some((w) => new RegExp(`(^| )${norm(w).replace(/-/g, '[- ]?')}( |$)`).test(q)));
     if (key && (NAV.test(q) || q.split(' ').length <= 3)) {
       const a = goAction(key);
       return a ? r(`Here’s the ${PLACES[key].name} page.`, a) : r(`You’re already on ${PLACES[key].name}.`);
@@ -211,16 +213,16 @@
     }
   }
 
-  const input = el('input', { class: 'ds-input', id: 'gd-q', type: 'text', placeholder: 'Ask me anything about builda+…', autocomplete: 'off', maxlength: '500', enterkeyhint: 'send', 'aria-label': 'Ask Plus a question' });
+  const input = el('input', { class: 'ds-input', id: 'gd-q', type: 'text', placeholder: 'Ask me anything about BuildA+…', autocomplete: 'off', maxlength: '500', enterkeyhint: 'send', 'aria-label': 'Ask Plus a question' });
   const panel = el('div', { class: 'gd-panel', id: 'gd-panel', role: 'dialog', 'aria-modal': 'false', 'aria-labelledby': 'gd-title', hidden: true },
-    el('div', { class: 'gd-head' }, el('div', {}, el('h2', { id: 'gd-title' }, 'Plus'), el('p', { id: 'gd-sub' }, 'Your builda+ guide')),
+    el('div', { class: 'gd-head' }, el('div', {}, el('h2', { id: 'gd-title' }, 'Plus'), el('p', { id: 'gd-sub' }, 'Your BuildA+ guide')),
       el('button', { class: 'gd-x', type: 'button', 'aria-label': 'Close the guide', onclick: () => setOpen(false) }, '×')),
     body,
     el('form', { class: 'gd-compose', onsubmit: (e) => { e.preventDefault(); send(input.value); } }, input,
-      el('p', { class: 'gd-foot' }, 'Answers come from builda+’s help, worded by AI. Please don’t include client or staff details.')));
+      el('p', { class: 'gd-foot' }, 'Answers come from BuildA+’s help, worded by AI. Please don’t include client or staff details.')));
 
   const root = el('div', { class: 'gd' });
-  const btn = el('button', { class: 'gd-buddy', type: 'button', 'aria-controls': 'gd-panel', 'aria-expanded': 'false', 'aria-label': 'Open the builda+ guide', onclick: () => setOpen(panel.hidden) }, buddy());
+  const btn = el('button', { class: 'gd-buddy', type: 'button', 'aria-controls': 'gd-panel', 'aria-expanded': 'false', 'aria-label': 'Open the BuildA+ guide', onclick: () => setOpen(panel.hidden) }, buddy());
   const bubble = store.get('gd-bubble') === 'off' ? null : el('div', { class: 'gd-bubble' },
     el('button', { class: 'gd-bubble__open', type: 'button', onclick: () => setOpen(true) }, 'Confused? ', el('span', {}, 'Ask me')),
     el('button', { class: 'gd-bubble__close', type: 'button', 'aria-label': 'Hide this message', onclick: () => { store.set('gd-bubble', 'off'); bubble.remove(); } }, '×'));

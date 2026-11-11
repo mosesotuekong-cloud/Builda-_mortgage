@@ -5,7 +5,7 @@ import { CLASSIFICATIONS, ROLE_LABELS, STAGE_IDS, STAGES, type Classification, t
 import { StageIdSchema } from '../domain/schemas';
 import type { LLMProvider } from '../llm/provider';
 import type { Playbook } from '../knowledge/playbook';
-import { applyKeyMerges, consolidate, planFollowUps, type AnalysisEvidence, type ConsolidatedPainPoint, type CrossRoleFindings } from './consolidate';
+import { applyKeyMerges, consolidate, keysThatAreNotProblems, planFollowUps, type AnalysisEvidence, type ConsolidatedPainPoint, type CrossRoleFindings } from './consolidate';
 import { classifyPainPoint, proposeKeyMerges } from './classify';
 import { buildOpportunities, type PainPointForScoring } from './opportunities';
 import { FirmProfileSchema } from '../firm/profile';
@@ -110,10 +110,16 @@ export class AnalysisService {
     const keys = [...new Set(evidence.map((e) => e.painPointKey))];
     // Merging is an AI suggestion. If it isn't available, analysis carries on with keys unmerged rather than failing.
     let mergeUnavailable = false;
-    const proposed = await proposeKeyMerges(llm, keys.map((k) => ({ key: k, descriptions: evidence.filter((e) => e.painPointKey === k).map((e) => e.taskDescription) })), playbookKeys)
-      .catch(() => { mergeUnavailable = true; return []; });
-    const merged = applyKeyMerges(evidence, proposed, playbook);
-    const findings = consolidate(merged.evidence, { playbook, firmLeadInterviewed });
+    const items = keys.map((k) => {
+      const rs = evidence.filter((e) => e.painPointKey === k);
+      return { key: k, stage: STAGES[rs[0]!.stageId].name, roles: [...new Set(rs.map((e) => ROLE_LABELS[e.role]))], descriptions: rs.map((e) => e.taskDescription),
+        causes: [...new Set(rs.map((e) => e.reportedCause).filter((c): c is string => !!c))] };
+    });
+    const review = await proposeKeyMerges(llm, items, playbookKeys).catch(() => { mergeUnavailable = true; return { merges: [], notProblems: [] }; });
+    const merged = applyKeyMerges(evidence, review.merges, playbook);
+    // Plain descriptions of a task ("I do the fact find; it works") stay as evidence but aren't findings.
+    const notProblems = keysThatAreNotProblems(merged.evidence, review.notProblems, merged.applied, playbook);
+    const findings = consolidate(merged.evidence.filter((e) => !notProblems.has(e.painPointKey)), { playbook, firmLeadInterviewed });
 
     // Classify only what changed; firm-lead decisions are never overwritten.
     const classifications = new Map<string, Awaited<ReturnType<typeof classifyPainPoint>> | null>();
@@ -147,8 +153,13 @@ export class AnalysisService {
           [ctx.orgId, discoveryId, pp.key, pp.stageId, pp.title, c?.classification ?? null, c?.rationale ?? null, c?.source ?? null,
            c?.requiresComplianceReview ?? STAGES[pp.stageId].regulatedJudgement, pp.confidence.level, { level: pp.confidence.level, reasons: pp.confidence.reasons, participantCount: pp.confidence.participantCount }, summary, c !== null && c !== undefined]);
       }
+      // A finding from an earlier analysis that this one no longer produces (merged into another, or not a
+      // problem after all) is retired, not deleted: its corrections and decisions stay in the history.
+      await tx.query(`update pain_points set evidence_summary = evidence_summary || '{"retired": true}'::jsonb, updated_at = now()
+                       where discovery_id = $1 and not (key = any($2::text[])) and not coalesce((evidence_summary->>'retired')::boolean, false)`,
+        [discoveryId, findings.painPoints.map((p) => p.key)]);
       await tx.query('insert into analysis_runs (org_id, discovery_id, findings, key_merges, playbook_version) values ($1,$2,$3,$4,$5)',
-        [ctx.orgId, discoveryId, JSON.stringify({ ...findingsForStorage(findings), firmLeadInterviewed }), JSON.stringify(merged.applied), playbook.version]);
+        [ctx.orgId, discoveryId, JSON.stringify({ ...findingsForStorage(findings), firmLeadInterviewed, notProblems: [...notProblems] }), JSON.stringify(merged.applied), playbook.version]);
       await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: 'analysis.run',
         metadata: { painPoints: findings.painPoints.length, merges: merged.applied.length, mergeUnavailable, classified: [...classifications.values()].filter(Boolean).length } }]);
     });
@@ -162,7 +173,7 @@ export class AnalysisService {
       const d = await tx.query('select firm_profile from discoveries where id = $1', [discoveryId]);
       if (!d.rows[0]) throw new NotFoundError('Discovery not found');
       const profile = FirmProfileSchema.safeParse(d.rows[0].firm_profile);
-      const r = await tx.query('select * from pain_points where discovery_id = $1', [discoveryId]);
+      const r = await tx.query(`select * from pain_points where discovery_id = $1 and not coalesce((evidence_summary->>'retired')::boolean, false)`, [discoveryId]);
       const pps: PainPointForScoring[] = r.rows.map((x) => ({
         id: x.id, key: x.key, title: x.title, stageId: x.stage_id, classification: x.classification,
         confidence: x.confidence as ConfidenceOrInsufficient,
@@ -191,8 +202,9 @@ export class AnalysisService {
       const live = await tx.query("select p.pseudonym from interview_sessions s join participants p on p.id = s.participant_id where s.discovery_id = $1 and s.status in ('in_progress','paused')", [discoveryId]);
       const exclude = new Set<string>(live.rows.map((r) => r.pseudonym));
       const evidence = await this.loadEvidence(tx, discoveryId);
-      const merges = await tx.query('select key_merges from analysis_runs where discovery_id = $1 order by created_at desc limit 1', [discoveryId]);
-      const merged = applyKeyMerges(evidence, merges.rows[0]?.key_merges ?? [], playbook).evidence;
+      const merges = await tx.query('select key_merges, findings from analysis_runs where discovery_id = $1 order by created_at desc limit 1', [discoveryId]);
+      const notProblems = new Set<string>(merges.rows[0]?.findings?.notProblems ?? []);
+      const merged = applyKeyMerges(evidence, merges.rows[0]?.key_merges ?? [], playbook).evidence.filter((e) => !notProblems.has(e.painPointKey));
       return planFollowUps(consolidate(merged, { playbook, firmLeadInterviewed: false }), merged, { exclude });
     });
     const byRef = new Map<string, typeof plan>();
@@ -238,7 +250,7 @@ export class AnalysisService {
       const run = await tx.query('select findings, created_at from analysis_runs where discovery_id = $1 order by created_at desc limit 1', [discoveryId]);
       const rows = await tx.query(
         `select pp.*, o.impact, o.score, o.rank, o.feasibility, o.assumptions, o.explanation, o.score_breakdown
-           from pain_points pp left join opportunities o on o.pain_point_id = pp.id where pp.discovery_id = $1`, [discoveryId]);
+           from pain_points pp left join opportunities o on o.pain_point_id = pp.id where pp.discovery_id = $1 and not coalesce((pp.evidence_summary->>'retired')::boolean, false)`, [discoveryId]);
       const progress = await tx.query(
         `select p.role, coalesce((select s.status::text from interview_sessions s where s.participant_id = p.id and s.kind = 'main' order by s.started_at desc limit 1), 'not started') as status
            from participants p where p.discovery_id = $1`, [discoveryId]);
@@ -434,7 +446,7 @@ export class AnalysisService {
         return {
           id, name: STAGES[id].name, regulatedJudgement: STAGES[id].regulatedJudgement, parallel: id === 'protection',
           evidence: ev.length, findings: pb.painPoints.filter((p) => p.stageId === id).map((p) => p.id),
-          openQuestions: [...new Set(ev.flatMap((e) => e.outstandingQuestions))].length,
+          openQuestions: [...new Set(findings.filter((f) => f.stageId === id).flatMap((f) => f.outstandingQuestions as string[]))].length,
           explored: ev.length > 0 || cov.asked > 0, questionsAsked: cov.asked, notInvolved: cov.notInvolved,
           hypotheses: playbook.cards.filter((c) => c.stageId === id && !findingKeys.has(c.id)).map((c) => ({ key: c.id, title: c.title, likelyClassification: c.likelyClassification })),
         };
@@ -450,7 +462,7 @@ export class AnalysisService {
         completed: participants.filter((x) => x.role === role && x.status === 'completed').length,
       }));
       const mainStages = stages.filter((s) => !s.parallel);
-      const openQuestions = [...new Set([...evidence.filter((e) => e.review.status !== 'disputed').flatMap((e) => e.outstandingQuestions), ...findings.flatMap((f) => f.outstandingQuestions as string[])])];
+      const openQuestions = [...new Set(findings.flatMap((f) => f.outstandingQuestions as string[]))];
       const assumptions = [...new Set(findings.flatMap((f) => [...(f.assumptions as string[]), ...(f.classificationSource === 'playbook' ? [`${f.title}: approach suggested by industry knowledge, not confirmed`] : [])]))];
       const profile = FirmProfileSchema.safeParse(d.firm_profile);
       const blockers = [
@@ -532,6 +544,8 @@ export class AnalysisService {
         `insert into corrections (org_id, discovery_id, entity_type, entity_id, field, old_value, new_value, reason, corrected_by)
          values ($1,$2,'pain_point',$3,'opportunity_decision',$4,$5,$6,$7)`,
         [ctx.orgId, discoveryId, painPointId, JSON.stringify(previous), JSON.stringify(value), reason, ctx.userId]);
+      // Approving is how the firm confirms a finding (there is no separate validation step).
+      if (value.decision === 'approved') await tx.query('update pain_points set validated_by_firm_lead = true, updated_at = now() where id = $1 and discovery_id = $2', [painPointId, discoveryId]);
       await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: `opportunity.${value.decision}`, entityType: 'pain_point', entityId: painPointId }]);
     });
   }

@@ -49,7 +49,7 @@ describe.skipIf(!APP || !ADMIN)('end to end over HTTP', () => {
 
   beforeAll(async () => {
     const analysis = new AnalysisService(db, { providerFor, playbook: SEED_PLAYBOOK, mailer, appBaseUrl: 'http://test' });
-    app = buildApp({
+    app = buildApp({ laterStages: true,
       db, firms, firmAuth: auth, jadaAuth: auth, sessionSecret: SECRET, secureCookies: false, analysis,
       interviews: new InterviewService(db, { providerFor, playbook: SEED_PLAYBOOK }),
       participants: new ParticipantAccessService(db),
@@ -221,10 +221,7 @@ describe.skipIf(!APP || !ADMIN)('end to end over HTTP', () => {
     const id = pb.painPoints[0].id;
     const bad = await app.inject({ method: 'POST', url: `/api/firm/discoveries/${discoveryId}/approve`, headers: { cookie: leadCookie() }, payload: { priorities: [randomUUID()], proceedWith: null } });
     expect(bad.statusCode).toBe(400);
-    // Phase 5: bulk approval follows the single-decision rules, so the finding must be validated first.
-    const early = await app.inject({ method: 'POST', url: `/api/firm/discoveries/${discoveryId}/approve`, headers: { cookie: leadCookie() }, payload: { priorities: [id], proceedWith: id } });
-    expect(early.statusCode).toBe(409);
-    await app.inject({ method: 'POST', url: `/api/firm/discoveries/${discoveryId}/pain-points/${id}/corrections`, headers: { cookie: leadCookie() }, payload: { field: 'validated', value: true, reason: 'Confirmed' } });
+    // Approving is the firm's confirmation of the finding: no separate validation step first.
     const ok = (await app.inject({ method: 'POST', url: `/api/firm/discoveries/${discoveryId}/approve`, headers: { cookie: leadCookie() }, payload: { priorities: [id], proceedWith: id, note: 'Start here' } })).json();
     packId = ok.packId;
     expect(packId).toBeTruthy();

@@ -1,5 +1,5 @@
 'use strict';
-// builda+ discovery workspace (Phase 3). Loaded before workspace.js; uses its shared helpers at call time.
+// BuildA+ discovery workspace (Phase 3). Loaded before workspace.js; uses its shared helpers at call time.
 // Every figure, status and confidence shown here comes from GET /api/firm/discoveries/:id/workspace.
 
 const SOURCE_LABEL = {
@@ -9,7 +9,8 @@ const SOURCE_LABEL = {
 const REVIEW = { unreviewed: ['Not reviewed', 'neutral'], validated: ['Validated by you', 'success'], disputed: ['Disputed', 'warning'] };
 const DIMENSION_LABEL = { existence: 'The problem exists here', volume: 'How often it happens', effort: 'Time each occurrence takes', impact: 'Estimated operational impact' };
 const CLASSIFICATION_SOURCE = { ai_proposed: 'Suggested by AI from what people said', playbook: 'Suggested by industry knowledge', firm_lead: 'Set by you' };
-const TABS = [['', 'Overview'], ['context', 'Firm context'], ['interviews', 'Interviews'], ['journey', 'Journey'], ['evidence', 'Evidence'], ['findings', 'Findings'], ['review', 'Review']];
+// Kept simple: one path from firm context to findings, then Opportunities is where the firm lead decides.
+const TABS = [['', 'Overview'], ['context', 'Firm context'], ['interviews', 'Interviews'], ['findings', 'Findings']];
 
 const sourceBadge = (s) => { const [cls, label] = SOURCE_LABEL[s] || SOURCE_LABEL.assumption; return el('span', { class: `ds-evidence ds-evidence--${cls}` }, label); };
 const reviewStatus = (r) => { const [l, v] = REVIEW[r.status] || REVIEW.unreviewed; return status(l, v); };
@@ -34,7 +35,8 @@ async function discoveryWorkspacePage(ws, id, tab = '', sub = '') {
   const count = { evidence: dw.evidence.length, findings: dw.findings.length };
   const tabs = el('nav', { class: 'ws-tabs', 'aria-label': 'Discovery sections' }, ...TABS.map(([k, label]) =>
     el('a', { class: 'ws-tab', href: dUrl(id, k), 'aria-current': k === tab ? 'page' : null }, label, count[k] !== undefined ? el('span', { class: 'dw-count' }, String(count[k])) : null)));
-  const views = { '': overviewTab, context: contextTab, interviews: interviewsTab, journey: journeyTab, evidence: evidenceTab, findings: findingsTab, review: reviewTab };
+  // journey, evidence and review were folded into Findings; old links still land somewhere useful.
+  const views = { '': overviewTab, context: contextTab, interviews: interviewsTab, findings: findingsTab, journey: overviewTab, evidence: (w, x) => findingsTab(w, x, ''), review: (w, x) => findingsTab(w, x, '') };
   const view = views[tab];
   if (!view) return { crumbs, nodes: [head, tabs, empty('This section doesn’t exist', 'Use the tabs above.')] };
   return { crumbs, nodes: [head, tabs, ...(await view(ws, dw, sub))] };
@@ -47,10 +49,8 @@ function nextStep(dw) {
   if (!dw.participants.length) return ['Invite people to interview', 'Include advisers, case managers and administrators, and yourself.', dUrl(id, 'interviews'), 'Invite participants'];
   if (c.interviews.completed === 0) return ['Wait for interviews to finish', `${c.interviews.completed} of ${c.interviews.invited} interviews finished. Share any links you haven’t sent yet.`, dUrl(id, 'interviews'), 'View interviews'];
   if (!d.analysedAt) return ['Analyse the interviews', 'Compare accounts across roles to produce findings, each linked to its evidence.', null, null];
-  if (c.disputedEvidence) return ['Resolve disputed evidence', `${plural(c.disputedEvidence, 'piece')} of evidence ${c.disputedEvidence === 1 ? 'is' : 'are'} disputed and left out of the analysis.`, dUrl(id, 'evidence') + '?review=disputed', 'Review evidence'];
-  if (c.findings.needValidation) return ['Review the findings', `${plural(c.findings.needValidation, 'finding')} ${c.findings.needValidation === 1 ? 'is' : 'are'} awaiting your review. Correct anything that doesn’t match how your firm works.`, dUrl(id, 'findings'), 'Review findings'];
-  if (d.status !== 'review_ready' && d.status !== 'priorities_approved') return ['Complete the discovery review', 'Check what’s been covered and what remains uncertain, then mark the discovery ready.', dUrl(id, 'review'), 'Open review'];
-  return ['Assess the opportunities', 'Create the report and approve your priorities.', `/app/opportunities?d=${id}`, 'Go to opportunities'];
+  if (d.status === 'interviews') return ['Look through the findings', 'What the interviews found, with what people said behind each one. Correct anything that’s wrong, then move on.', dUrl(id, 'findings'), 'See the findings'];
+  return ['Approve your priorities', 'Choose which opportunities matter most, then download your report.', `/app/opportunities?d=${id}`, 'Go to opportunities'];
 }
 
 async function runAction(btn, m, label, fn) {
@@ -86,15 +86,13 @@ function overviewTab(ws, dw) {
     ['Firm context', !!dw.profile, false, dw.profile ? 'Provided by the firm' : 'Not provided', dUrl(id, 'context')],
     ['Interviews', c.interviews.invited > 0 && c.interviews.completed >= c.interviews.invited, c.interviews.invited > 0, c.interviews.invited ? `${c.interviews.completed} of ${c.interviews.invited} finished` : 'Nobody invited yet', dUrl(id, 'interviews')],
     ['Analysis', !!d.analysedAt, c.interviews.completed > 0, d.analysedAt ? `Last analysed ${fmtDateTime(d.analysedAt)}` : 'Not analysed yet', null],
-    ['Evidence and findings review', !!d.analysedAt && c.findings.needValidation === 0 && !c.disputedEvidence, !!d.analysedAt, d.analysedAt ? `${c.findings.total - c.findings.needValidation} of ${plural(c.findings.total, 'finding')} validated` : '—', dUrl(id, 'findings')],
-    ['Discovery review', ['review_ready', 'priorities_approved'].includes(d.status), !!d.analysedAt, d.status === 'review_ready' ? 'Ready for opportunity review' : d.status === 'priorities_approved' ? 'Priorities approved' : 'Not completed', dUrl(id, 'review')],
+    ['Findings', ['review_ready', 'priorities_approved'].includes(d.status), !!d.analysedAt, d.analysedAt ? plural(c.findings.total, 'finding') : '—', dUrl(id, 'findings')],
+    ['Opportunities', d.status === 'priorities_approved', ['review_ready', 'priorities_approved'].includes(d.status), d.status === 'priorities_approved' ? 'Priorities approved' : 'Approve your priorities', `/app/opportunities?d=${id}`],
   ];
   const outstanding = [
+    ...!dw.profile ? [['Firm details not provided', dUrl(id, 'context')]] : [],
+    ...!c.interviews.invited ? [['Nobody invited to an interview yet', dUrl(id, 'interviews')]] : [],
     ...dw.participants.filter((p) => p.status !== 'completed').length ? [[`${plural(dw.participants.filter((p) => p.status !== 'completed').length, 'interview')} not finished`, dUrl(id, 'interviews')]] : [],
-    ...c.findings.needValidation ? [[`${plural(c.findings.needValidation, 'finding')} awaiting your review`, dUrl(id, 'findings')]] : [],
-    ...c.disputedEvidence ? [[`${plural(c.disputedEvidence, 'piece')} of disputed evidence`, dUrl(id, 'evidence') + '?review=disputed']] : [],
-    ...c.openQuestions ? [[`${plural(c.openQuestions, 'open question')}`, dUrl(id, 'review')]] : [],
-    ...c.missingMeasurements ? [[`${plural(c.missingMeasurements, 'finding')} missing a figure`, dUrl(id, 'review')]] : [],
   ];
   return [
     el('div', { class: 'ws-next' }, el('div', { class: 'ws-next__text' }, el('p', { class: 'ds-eyebrow' }, 'Recommended next action'), el('h2', { class: 'ws-next__title' }, title), el('p', { class: 'ds-muted ds-body-sm' }, text)),
@@ -115,7 +113,7 @@ function contextTab(ws, dw) {
   const p = dw.profile, id = dw.discovery.id;
   const isLatest = ws.discoveries[0]?.id === id;
   const editNote = isLatest ? linkBtn('/app/profile', 'Edit firm details', 'secondary') : el('p', { class: 'ds-help' }, 'This is an earlier discovery. Its firm context is kept as it was; edits apply to your current discovery.');
-  const provenance = el('p', { class: 'ds-body-sm ds-muted dw-provenance' }, 'Everything on this page is ', sourceBadge('firm_provided'), ': supplied by your firm in the firm profile. builda+ adds no researched or inferred information here.');
+  const provenance = el('p', { class: 'ds-body-sm ds-muted dw-provenance' }, 'Everything on this page is ', sourceBadge('firm_provided'), ': supplied by your firm in the firm profile. BuildA+ adds no researched or inferred information here.');
   if (!p) return [provenance, empty('No firm context yet', 'The firm profile hasn’t been completed for this discovery.', isLatest ? linkBtn('/app/profile', 'Complete firm details', 'primary') : null, 'profile')];
   const roleCount = (r) => (p.staffRoles || []).find((x) => x.role === r)?.count;
   const label = (list, v) => (list.find(([k]) => k === v) || [v, v])[1];
@@ -178,12 +176,35 @@ function interviewsTab(ws, dw) {
   try { const saved = JSON.parse(sessionStorage.getItem('ws-new-link') || 'null'); if (saved && saved.id === id) links.replaceChildren(linkBox(saved.name, saved.link)); sessionStorage.removeItem('ws-new-link'); } catch { /* storage unavailable */ }
 
   return [
+    nextBar(dw, 'interviews'),
     el('p', { class: 'ds-body-sm ds-muted dw-intro' }, 'Each person has an independent conversation with the AI interviewer, about the work they actually do: how cases move, where they wait, what gets handed over, the exceptions and the workarounds. No facilitator is needed, and everyone can pause and come back. Findings are shown to you by role, not by person.'),
     section('Roles taking part', null, roleChips),
     section('People', el('span', { class: 'ws-subtle' }, plural(dw.participants.length, 'person', 'people')), people, links),
     el('div', { class: 'ws-section' }, form),
-    section('Missing information', null, el('p', { class: 'ds-body-sm ds-muted' }, 'After analysis, builda+ can write short follow-up questions to the people whose figures differ or are missing. They answer through a new link.'), actionsBar(dw)),
+    section('Missing information', null, el('p', { class: 'ds-body-sm ds-muted' }, 'After analysis, BuildA+ can write short follow-up questions to the people whose figures differ or are missing. They answer through a new link.'), actionsBar(dw)),
   ];
+}
+
+// The one button that moves the discovery on: Interviews -> Findings -> Opportunities.
+function nextBar(dw, from) {
+  const d = dw.discovery, id = d.id, m = msgEl();
+  const box = (title, text, action) => el('div', { class: 'ws-next dw-nextbar' }, el('div', { class: 'ws-next__text' }, el('p', { class: 'ds-eyebrow' }, 'Next step'), el('h2', { class: 'ws-next__title' }, title), el('p', { class: 'ds-muted ds-body-sm' }, text), m), action);
+  if (from === 'interviews') {
+    if (!dw.completion.interviews.completed) return null;
+    if (!d.analysedAt) {
+      const go = el('button', { class: 'ds-btn ds-btn--primary', type: 'button', onclick: () => runAction(go, m, 'Analysing the interviews, this takes a few minutes', async () => {
+        await api(`/api/firm/discoveries/${id}/analyse`, 'POST'); location.href = dUrl(id, 'findings');
+      }) }, 'Analyse and see findings');
+      return box('Turn the interviews into findings', `${plural(dw.completion.interviews.completed, 'interview')} finished. You can analyse now, and again later as more come in.`, go);
+    }
+    return box('See what the interviews found', 'Findings are up to date with the last analysis. Re-analyse from the overview after more interviews finish.', linkBtn(dUrl(id, 'findings'), 'Next: findings', 'primary'));
+  }
+  // From findings: moving on records that the firm lead has looked through them (no separate review step).
+  const go = el('button', { class: 'ds-btn ds-btn--primary', type: 'button', onclick: () => runAction(go, m, 'Opening opportunities', async () => {
+    if (d.status === 'interviews') await api(`/api/firm/discoveries/${id}/complete`, 'POST', { note: '' });
+    location.href = `/app/opportunities?d=${id}`;
+  }) }, 'Next: approve priorities');
+  return box('Decide what to take forward', 'Each finding becomes an opportunity, ranked by fixed rules. Approving one is how you confirm it.', go);
 }
 
 /* ============================================================ D. journey */
@@ -289,11 +310,19 @@ function findingsTab(ws, dw, fid) {
     cr ? el('div', { class: 'ds-alert ds-alert--info' }, el('p', { class: 'ds-alert__title' }, 'Across roles'),
       el('p', {}, `Agreed by several people: ${cr.agreements.length ? cr.agreements.map(titleOf).join('; ') : 'none yet'}. Accounts differ: ${cr.disagreements.length ? cr.disagreements.map(titleOf).join('; ') : 'none'}. `,
         cr.firmLeadInterviewed ? `Raised by staff but not by you: ${cr.blindSpots.length ? cr.blindSpots.map(titleOf).join('; ') : 'none'}.` : 'Complete your own interview to see what staff raised that you didn’t.')) : null,
+    nextBar(dw, 'findings'),
     el('div', { class: 'ws-findings ws-section' }, ...dw.findings.slice().sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9)).map((f) => el('article', { class: 'ds-card ws-finding' },
       el('div', { class: 'ws-finding__top' }, el('h3', { class: 'ws-finding__title' }, el('a', { href: dUrl(id, 'findings', f.id) }, f.title)),
-        el('div', { class: 'ds-cluster' }, classification(f.classification), f.validated ? status('Validated by you', 'success') : status('Awaiting your review', 'warning'))),
+        el('div', { class: 'ds-cluster' }, classification(f.classification))),
       el('p', { class: 'ws-subtle' }, `${f.stageName} · ${plural(f.evidenceIds.length - f.disputedEvidence, 'evidence item')}${f.disputedEvidence ? ` · ${f.disputedEvidence} disputed` : ''}${f.disagreements.length ? ' · accounts differ' : ''}`),
       el('div', { class: 'dw-dims' }, ...['existence', 'volume', 'effort', 'impact'].map((k) => el('div', { class: 'dw-dim' }, el('span', { class: 'ws-subtle' }, DIMENSION_LABEL[k]), confidence(f.dimensions[k].level)))))))];
+}
+
+// What people said behind a finding: read-only, by role (quotes withheld where a role has fewer than three people).
+function evidenceQuotes(items) {
+  return el('ul', { class: 'ws-list dw-quotes' }, ...items.map((e) => el('li', {},
+    el('p', { class: 'ds-body-sm' }, e.observed), e.quote ? el('blockquote', { class: 'dw-quote' }, `“${e.quote}”`) : null,
+    el('p', { class: 'ws-subtle' }, `${e.role} · ${e.stageName}`))));
 }
 
 function findingDetail(dw, fid) {
@@ -311,7 +340,6 @@ function findingDetail(dw, fid) {
     el('div', { class: 'dw-finding-head' },
       el('h2', { class: 'ds-h2' }, f.title),
       el('div', { class: 'ds-cluster' }, el('span', { class: 'ws-chip' }, f.stageName), classification(f.classification),
-        f.validated ? status('Validated by you', 'success') : status('Awaiting your review', 'warning'),
         f.requiresComplianceReview ? el('span', { class: 'ds-badge dw-badge-warn' }, 'Needs compliance review') : null)),
     el('div', { class: 'ws-grid-2' },
       el('div', {},
@@ -321,29 +349,24 @@ function findingDetail(dw, fid) {
           f.improvements.length ? el('p', {}, el('strong', {}, 'Improvements suggested: '), f.improvements.join('; ')) : null,
           el('p', {}, el('strong', {}, 'Approach: '), f.classification ? `${CLASSIFICATION[f.classification][1]} — ${CLASSIFICATION_SOURCE[f.classificationSource] || 'source not recorded'}.` : 'Not yet classified.',
             f.classificationRationale ? ` ${f.classificationRationale}` : ''))),
-        section('Confidence by claim', null, el('div', { class: 'ds-table-wrap' }, el('table', { class: 'ds-table' },
-          el('thead', {}, el('tr', {}, el('th', { scope: 'col' }, 'Claim'), el('th', { scope: 'col' }, 'Confidence'), el('th', { scope: 'col' }, 'Why'))),
-          el('tbody', {}, ...['existence', 'volume', 'effort', 'impact'].map((k) => el('tr', {}, el('th', { scope: 'row' }, DIMENSION_LABEL[k]), el('td', {}, confidence(f.dimensions[k].level)), el('td', { class: 'ds-body-sm' }, f.dimensions[k].reasons.join('. '))))))),
-          el('p', { class: 'ds-help' }, 'Assessed by fixed rules from the evidence below, not by AI. Corrections you make count as one account and never raise confidence on their own.')),
         section('Figures', null, el('div', { class: 'dw-figures' },
           figure('Times a month', f.volume, f.overrides.monthlyVolume), figure('Minutes each time', f.minutes, f.overrides.minutesPerOccurrence),
           el('div', { class: 'dw-figure' }, el('span', { class: 'ws-subtle' }, 'Staff hours a month'), el('strong', {}, num(f.impact && f.impact.monthlyHoursSpent))),
           el('div', { class: 'dw-figure' }, el('span', { class: 'ws-subtle' }, 'Hours that could be recovered'), el('strong', {}, num(f.impact && f.impact.monthlyHoursRecovered)))),
           f.assumptions.length ? el('ul', { class: 'ds-body-sm dw-assumptions' }, ...f.assumptions.map((a) => el('li', {}, sourceBadge(/supplied by the firm|by the firm lead|set by the firm lead/i.test(a) ? 'firm_provided' : 'assumption'), ' ', a))) : null),
         f.disagreements.length ? section('Different perspectives', null, el('div', { class: 'ds-alert ds-alert--warning' },
-          el('p', { class: 'ds-alert__title' }, 'Accounts differ: this needs validation'),
+          el('p', { class: 'ds-alert__title' }, 'Accounts differ'),
           ...f.disagreements.map((dg) => el('p', {}, `${dg.field === 'minutesPerOccurrence' ? 'Minutes each time' : 'Times a month'}: ${dg.values.map((v) => `${v.role} ${num(v.value)}`).join(' · ')}`)),
           el('p', {}, 'Differences often mean the work varies by case type or role. They’re kept side by side, not averaged away or treated as mistakes.'))) : null,
-        section('Supporting evidence', el('span', { class: 'ds-cluster' }, ...sources.map(sourceBadge)), supporting.length ? evidenceList(dw, supporting, null) : el('p', { class: 'ds-muted ds-body-sm' }, 'No undisputed evidence supports this finding.')),
-        disputed.length ? section('Disputed evidence', null, el('p', { class: 'ds-help' }, 'Left out of confidence and of the next analysis.'), evidenceList(dw, disputed, null)) : null),
+        section('What people said', el('span', { class: 'ds-cluster' }, ...sources.map(sourceBadge)), supporting.length ? evidenceQuotes(supporting) : el('p', { class: 'ds-muted ds-body-sm' }, 'No evidence supports this finding.'))),
       el('div', {},
-        section('Recommended validation', null, f.validationActions.length ? el('ul', { class: 'ws-list' }, ...f.validationActions.map((a) => el('li', {}, a))) : el('p', { class: 'ds-muted ds-body-sm' }, 'Nothing further.')),
-        f.outstandingQuestions.length ? section('Open questions', null, el('ul', { class: 'ws-list' }, ...f.outstandingQuestions.map((q) => el('li', {}, q)))) : null,
-        section('Correct or clarify', null, correctionForm(dw, f)),
-        section('History', null, f.history.length ? el('ul', { class: 'ws-list dw-history' }, ...f.history.map((h) => el('li', { class: 'dw-history__item' },
-          el('span', {}, el('strong', {}, h.label), h.field === 'clarification' ? `: ${h.newValue}` : h.field === 'review' ? `: ${String(h.newValue)}` : `: ${fmtVal(h.oldValue)} → ${fmtVal(h.newValue)}`,
-            h.reason ? el('span', { class: 'ws-subtle' }, ` — ${h.reason}`) : null, h.entityType === 'evidence_record' ? el('span', { class: 'ws-subtle' }, ' (evidence item)') : null),
-          el('time', { datetime: h.at }, fmtDateTime(h.at))))) : el('p', { class: 'ds-muted ds-body-sm' }, 'No corrections or reviews yet. Everything you change is recorded here with your reason.')))),
+        // Optional, and only if something is wrong: approving the opportunity is how a finding is confirmed.
+        el('details', { class: 'ws-fieldset dw-fix' }, el('summary', {}, 'Something wrong? Correct it'),
+          el('p', { class: 'ds-help' }, 'Only if this doesn’t match how your firm works. Your correction and reason are recorded.'), correctionForm(dw, f)),
+        f.history.length ? section('Your changes', null, el('ul', { class: 'ws-list dw-history' }, ...f.history.map((h) => el('li', { class: 'dw-history__item' },
+          el('span', {}, el('strong', {}, h.label), h.field === 'clarification' ? `: ${h.newValue}` : `: ${fmtVal(h.oldValue)} → ${fmtVal(h.newValue)}`, h.reason ? el('span', { class: 'ws-subtle' }, ` — ${h.reason}`) : null),
+          el('time', { datetime: h.at }, fmtDateTime(h.at)))))) : null)),
+    nextBar(dw, 'findings'),
   ];
 }
 const fmtVal = (v) => (v === null || v === undefined ? '—' : typeof v === 'object' && v.decision ? String(v.decision).replace(/_/g, ' ') : typeof v === 'boolean' ? (v ? 'yes' : 'no') : typeof v === 'number' ? num(v) : String(v).replace(/_/g, ' '));
@@ -351,7 +374,7 @@ const fmtVal = (v) => (v === null || v === undefined ? '—' : typeof v === 'obj
 function correctionForm(dw, f) {
   const id = dw.discovery.id;
   const fieldSel = el('select', { class: 'ds-select', name: 'field' }, ...[
-    ['validated', 'Confirm or un-confirm the finding'], ['classification', 'Approach'], ['monthlyVolume', 'Times a month'], ['minutesPerOccurrence', 'Minutes each time'],
+    ['classification', 'Approach'], ['monthlyVolume', 'Times a month'], ['minutesPerOccurrence', 'Minutes each time'],
     ['reductionPct', 'Share of work that could be removed (%)'], ['title', 'Title'], ['stageId', 'Stage'], ['clarification', 'Add a clarification'],
   ].map(([v, l]) => el('option', { value: v }, l)));
   const holder = el('div', {});

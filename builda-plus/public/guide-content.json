@@ -3,10 +3,10 @@
   "global": [
     {
       "q": "Is this guide AI?",
-      "a": "Partly. Plus’s answers come only from the help written into builda+. When the AI service is available, Plus uses it to understand your question and word the answer from that help, so your question is sent to it (OpenAI). It never sees your firm’s data, and questions aren’t stored. Please don’t include client or staff details. If the AI isn’t available, Plus answers from the written help directly."
+      "a": "Partly. Plus’s answers come only from the help written into BuildA+. When the AI service is available, Plus uses it to understand your question and word the answer from that help, so your question is sent to it (OpenAI). It never sees your firm’s data, and questions aren’t stored. Please don’t include client or staff details. If the AI isn’t available, Plus answers from the written help directly."
     },
     {
-      "q": "Does builda+ give mortgage advice?",
+      "q": "Does BuildA+ give mortgage advice?",
       "a": "No. It looks at how work moves through the firm, never at advice. Advice and suitability decisions are classified “Keep human” and stay with your advisers."
     },
     {
@@ -27,7 +27,7 @@
     },
     {
       "q": "Is time recovered a saving?",
-      "a": "No. Recovered time is capacity: your team gets hours back. It only becomes a cash saving if the firm actually spends less, and builda+ only counts savings you state yourself."
+      "a": "No. Recovered time is capacity: your team gets hours back. It only becomes a cash saving if the firm actually spends less, and BuildA+ only counts savings you state yourself."
     },
     {
       "q": "Who is JADA?",
@@ -82,11 +82,11 @@
       "faqs": [
         {
           "q": "Do I have to fill everything in?",
-          "a": "No. Only the number of mortgage advisers is required. Anything else you’re unsure of can stay blank; builda+ never fills it in for you."
+          "a": "No. Only the number of mortgage advisers is required. Anything else you’re unsure of can stay blank; BuildA+ never fills it in for you."
         },
         {
           "q": "Why does it ask for an hourly cost?",
-          "a": "Only to show the scale of time your team could get back. builda+ never estimates it and never presents it as a saving."
+          "a": "Only to show the scale of time your team could get back. BuildA+ never estimates it and never presents it as a saving."
         },
         {
           "q": "What happens if we start a second discovery?",
@@ -97,7 +97,7 @@
     },
     "technology": {
       "title": "Technology inventory",
-      "purpose": "The systems your firm already uses, so recommendations build on what you have. Recording a system never means builda+ connects to it.",
+      "purpose": "The systems your firm already uses, so recommendations build on what you have. Recording a system never means BuildA+ connects to it.",
       "check": [
         "Your CRM or case system, email or shared mailboxes, document storage and lender portals are listed.",
         "Each system has the teams that use it.",
@@ -194,13 +194,13 @@
       ],
       "how": [
         "Enter a name, choose a role, and click Add and get their link.",
-        "Copy the link and send it yourself. builda+ doesn’t email anyone.",
+        "Copy the link and send it yourself. BuildA+ doesn’t email anyone.",
         "If someone loses their link, click Make a new link (the old one stops working)."
       ],
       "next": "When most have finished, analyse the interviews on the Overview tab.",
       "faqs": [
         {
-          "q": "Does builda+ send the invitations?",
+          "q": "Does BuildA+ send the invitations?",
           "a": "No. You copy each person’s link and share it however you like."
         },
         {
@@ -226,7 +226,7 @@
       "purpose": "The stages of the mortgage journey, with the evidence and findings at each one.",
       "check": [
         "Stages marked “Not yet explored”: consider asking about them in follow-up questions.",
-        "Stages labelled “Adviser judgement: preparation only”: builda+ only looks at the admin around them."
+        "Stages labelled “Adviser judgement: preparation only”: BuildA+ only looks at the admin around them."
       ],
       "how": [
         "Click a finding on a stage to open it."
@@ -317,7 +317,7 @@
         },
         {
           "q": "Why do accounts differ?",
-          "a": "Often because the work varies by case type or role. builda+ keeps them side by side rather than averaging them away."
+          "a": "Often because the work varies by case type or role. BuildA+ keeps them side by side rather than averaging them away."
         }
       ]
     },
@@ -378,7 +378,7 @@
         },
         {
           "q": "Why does “Hours recovered” say Unknown?",
-          "a": "builda+ only estimates recoverable time where a reviewed pattern supplies the assumption. Otherwise it knows how long the work takes, but doesn’t guess what a change would save."
+          "a": "BuildA+ only estimates recoverable time where a reviewed pattern supplies the assumption. Otherwise it knows how long the work takes, but doesn’t guess what a change would save."
         },
         {
           "q": "Two items have the same score.",
@@ -461,7 +461,7 @@
       "faqs": [
         {
           "q": "Why does it say “Not yet measured”?",
-          "a": "No result has been recorded from the agreed source yet. builda+ never estimates results."
+          "a": "No result has been recorded from the agreed source yet. BuildA+ never estimates results."
         },
         {
           "q": "Does finishing the work mean success?",
@@ -480,7 +480,7 @@
     },
     "eng-queue": {
       "title": "Engineering queue",
-      "purpose": "Opportunities firms have sent from builda+, assigned to you and grouped by status.",
+      "purpose": "Opportunities firms have sent from BuildA+, assigned to you and grouped by status.",
       "check": [
         "“Waiting to be picked up”: firm name and reason only until you pick a discovery up.",
         "Items awaiting information from a firm."
@@ -500,7 +500,7 @@
     },
     "eng-detail": {
       "title": "An engineering submission",
-      "purpose": "The brief from builda+, your design, the plan, the decisions and the measured outcome.",
+      "purpose": "The brief from BuildA+, your design, the plan, the decisions and the measured outcome.",
       "check": [
         "What remains uncertain, and whether the stage is regulated.",
         "Template readiness: draft, reviewed, tested.",
@@ -546,5 +546,79 @@
       ],
       "href": "/jada/engineering/templates"
     }
-  }
+  },
+  "terms": [
+    {
+      "term": "Residential purchase",
+      "meaning": "Mortgages for people buying a home to live in."
+    },
+    {
+      "term": "Remortgage and product transfers",
+      "meaning": "Changing an existing mortgage: moving it to a new lender (a remortgage) or to a new deal with the same lender (a product transfer)."
+    },
+    {
+      "term": "Buy-to-let",
+      "meaning": "Mortgages for property bought to rent out to tenants."
+    },
+    {
+      "term": "Later life lending",
+      "meaning": "Mortgages for older borrowers, often near or in retirement. For example lifetime mortgages (equity release) and retirement interest-only mortgages."
+    },
+    {
+      "term": "Protection",
+      "meaning": "Insurance arranged alongside a mortgage, such as life cover, critical illness cover and income protection."
+    },
+    {
+      "term": "Commercial and specialist",
+      "meaning": "Lending outside standard home mortgages, for example commercial property, bridging loans or development finance."
+    },
+    {
+      "term": "Business focus",
+      "meaning": "The types of mortgage business the firm does. Tick all that apply; it helps the interviews ask about the right kinds of case."
+    },
+    {
+      "term": "Advisers supported by dedicated case managers",
+      "meaning": "Advisers give the advice, then a separate case team progresses the case: documents, lenders, solicitors and updates."
+    },
+    {
+      "term": "Advisers manage their own cases",
+      "meaning": "Each adviser gives the advice and also progresses their own cases through to completion."
+    },
+    {
+      "term": "Central processing or administration team",
+      "meaning": "One shared team progresses cases for all the advisers."
+    },
+    {
+      "term": "How work is organised (operating model)",
+      "meaning": "Who progresses a case after the advice is given: dedicated case managers, the advisers themselves, a central team, or a mix."
+    },
+    {
+      "term": "Directly authorised",
+      "meaning": "The firm holds its own permission from the FCA (the Financial Conduct Authority, which regulates mortgage advice)."
+    },
+    {
+      "term": "Appointed representative of a network",
+      "meaning": "The firm works under a larger network that holds the FCA permission and sets some of its rules."
+    },
+    {
+      "term": "Firm lead",
+      "meaning": "The one person at the firm who runs the discovery on the firm side: fills in the details, invites the team, checks findings and approves priorities."
+    },
+    {
+      "term": "Case manager",
+      "meaning": "Someone who progresses cases after the advice: chasing documents and keeping lenders, solicitors and clients updated. Sometimes called a case administrator or processor."
+    },
+    {
+      "term": "Administrator",
+      "meaning": "Someone who handles general administration, such as new enquiries, data entry and filing, rather than progressing individual cases."
+    },
+    {
+      "term": "CRM and mortgage platforms",
+      "meaning": "The main systems for client records and cases, plus mortgage sourcing or submission tools."
+    },
+    {
+      "term": "Fix / redesign (overhaul) / automate / keep with people",
+      "meaning": "The four recommendations BuildA+ gives a problem: correct an existing setting or habit; change how the process flows; let software take over repetitive work with staff still checking; or keep it with people because it needs their judgement."
+    }
+  ]
 }

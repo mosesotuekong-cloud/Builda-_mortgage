@@ -61,6 +61,36 @@ export function applyKeyMerges(evidence: AnalysisEvidence[], proposed: KeyMerge[
   return { evidence: evidence.map((e) => (rename.has(e.painPointKey) ? { ...e, painPointKey: rename.get(e.painPointKey)! } : e)), applied };
 }
 
+// The AI flags keys where nobody describes a problem ("I do the fact find, it works fine"). Those stay as
+// evidence (they show what each role does) but don't become findings. Never for a playbook pain point,
+// or where anyone gave a cause. Keys are compared after merges, so a merged group counts as one.
+export function keysThatAreNotProblems(evidence: AnalysisEvidence[], flagged: string[], applied: KeyMerge[], playbook: Playbook): Set<string> {
+  const rename = new Map(applied.flatMap((m) => m.mergedKeys.map((k) => [k, m.canonicalKey] as const)));
+  const playbookKeys = new Set(playbook.cards.map((c) => c.id));
+  const out = new Set<string>();
+  for (const raw of flagged) {
+    const key = rename.get(raw) ?? raw;
+    const rs = evidence.filter((e) => e.painPointKey === key);
+    if (!rs.length || playbookKeys.has(key) || rs.some((e) => e.reportedCause || e.potentialImprovement)) continue;
+    // A merged group is only "not a problem" if every key in it was flagged.
+    const group = [key, ...(applied.find((m) => m.canonicalKey === key)?.mergedKeys ?? [])];
+    if (group.every((k) => flagged.includes(k))) out.add(key);
+  }
+  return out;
+}
+
+// Questions the AI noted as open at the time. Once the finding has a figure, the questions asking for that
+// figure are answered, so they're no longer counted as open.
+const ASKS_VOLUME = /\bhow (many|often)\b|\bper (day|week|month|year)\b|\btimes (a|per)\b|\bvolume\b/i;
+const ASKS_TIME = /\bhow long\b|\bminutes\b|\bhours?\b|\btime (does|do|it takes|each|per)\b/i;
+export function stillOpen(questions: string[], hasVolume: boolean, hasMinutes: boolean): string[] {
+  return questions.filter((q) => {
+    const v = ASKS_VOLUME.test(q), t = ASKS_TIME.test(q);
+    if (!v && !t) return true;
+    return (v && !hasVolume) || (t && !hasMinutes);
+  });
+}
+
 function latestByParticipant(rs: AnalysisEvidence[], field: Measurement): Record<string, number> {
   const out: Record<string, number> = {};
   for (const r of [...rs].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())) {
@@ -104,7 +134,7 @@ export function consolidate(evidence: AnalysisEvidence[], opts: { playbook: Play
       systems: uniq(rs.flatMap((r) => r.systems)),
       causes: uniq(rs.map((r) => r.reportedCause).filter((x): x is string => !!x)),
       improvements: uniq(rs.map((r) => r.potentialImprovement).filter((x): x is string => !!x)),
-      outstandingQuestions: uniq(rs.flatMap((r) => r.outstandingQuestions)),
+      outstandingQuestions: stillOpen(uniq(rs.flatMap((r) => r.outstandingQuestions)), volume.n > 0, minutes.n > 0),
       quotesByRole: rs.map((r) => ({ role: r.role, quote: r.supportingQuote })),
       conversionAssumptions: uniq(rs.flatMap((r) => r.conversionAssumptions)),
       missingMeasurements: [volume.n === 0 ? 'monthlyVolume' : null, minutes.n === 0 ? 'minutesPerOccurrence' : null].filter((x): x is Measurement => !!x),

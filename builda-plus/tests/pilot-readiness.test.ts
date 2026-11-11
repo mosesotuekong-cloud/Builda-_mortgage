@@ -44,7 +44,7 @@ describe('pilot readiness guards', () => {
     expect(SEED_PLAYBOOK.reviewed).not.toBe(true);
   });
 
-  it('builda+ source requests no Mail.Send scope anywhere', () => {
+  it('BuildA+ source requests no Mail.Send scope anywhere', () => {
     const files: string[] = [];
     const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); statSync(p).isDirectory() ? walk(p) : files.push(p); } };
     walk(join(__dirname, '..', 'src'));

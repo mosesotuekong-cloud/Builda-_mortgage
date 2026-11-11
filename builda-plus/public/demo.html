@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Book a demo — BuildA+</title>
+<meta name="description" content="See how BuildA+ finds where time is lost across a mortgage firm, and what it recommends: a 30-minute walkthrough with the JADA team.">
+<link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/static/design-system.css">
+<link rel="stylesheet" href="/static/landing.css">
+<link rel="stylesheet" href="/static/demo.css">
+<script src="/static/demo.js" defer></script>
+</head>
+<body class="ds-base dm">
+<a class="ds-skip-link" href="#main">Skip to content</a>
+
+<header class="dm-top">
+  <div class="ds-container dm-top__inner">
+    <a class="ds-nav__brand" href="/" aria-label="BuildA+ home">
+      <span class="lp-mark" aria-hidden="true"></span><span>BuildA<span class="lp-plus">+</span></span>
+    </a>
+    <a class="dm-back" href="/">← Back to the site</a>
+  </div>
+</header>
+
+<main id="main" class="dm-main">
+  <div class="ds-container dm-grid">
+    <section class="dm-pitch" aria-labelledby="dm-title">
+      <p class="ds-eyebrow">Book a demo</p>
+      <h1 class="ds-h1 dm-title" id="dm-title">See where your firm loses time, <span class="lp-pop is-drawn">and what to do about it.</span></h1>
+      <p class="ds-lead">A 30-minute walkthrough with the JADA team, using a made-up firm that works like yours.</p>
+
+      <h2 class="dm-sub">In the demo you’ll see</h2>
+      <ul class="dm-checks">
+        <li>How the interviews work: short, role-based conversations with your advisers, case managers and administrators.</li>
+        <li>The findings: where work slows down, who said so, and how confident we are.</li>
+        <li>The recommendations: what to overhaul, fix, automate or keep human, and why.</li>
+        <li>The report your leadership team gets at the end.</li>
+      </ul>
+
+      <h2 class="dm-sub">What happens next</h2>
+      <ol class="dm-next">
+        <li><strong>We reply within one working day</strong> to arrange a time that suits you.</li>
+        <li><strong>The demo</strong>: 30 minutes on a video call. Bring anyone who runs the operation.</li>
+        <li><strong>If it fits</strong>, we agree an initial assessment of your firm. If it doesn’t, we’ll say so.</li>
+      </ol>
+
+      <ul class="dm-trust" aria-label="Good to know">
+        <li>No commitment</li>
+        <li>No client data needed</li>
+        <li>BuildA+ does not give mortgage advice</li>
+      </ul>
+    </section>
+
+    <section class="ds-card dm-card" aria-labelledby="dm-form-title" id="dm-card">
+      <form id="dm-form" class="dm-form" novalidate>
+        <div>
+          <h2 class="ds-h3" id="dm-form-title">Request your demo</h2>
+          <p class="ds-help">Takes under a minute. Fields marked optional can be left blank.</p>
+        </div>
+        <div class="ds-field">
+          <label class="ds-label" for="dm-name">Your name</label>
+          <input class="ds-input" id="dm-name" name="name" autocomplete="name" required maxlength="120">
+          <p class="dm-error" id="dm-name-error" hidden></p>
+        </div>
+        <div class="ds-field">
+          <label class="ds-label" for="dm-email">Work email</label>
+          <input class="ds-input" id="dm-email" name="email" type="email" autocomplete="email" required maxlength="200">
+          <p class="dm-error" id="dm-email-error" hidden></p>
+        </div>
+        <div class="ds-field">
+          <label class="ds-label" for="dm-firm">Firm name</label>
+          <input class="ds-input" id="dm-firm" name="firmName" autocomplete="organization" required maxlength="160">
+          <p class="dm-error" id="dm-firmName-error" hidden></p>
+        </div>
+        <div class="dm-row">
+          <div class="ds-field">
+            <label class="ds-label" for="dm-role">Your role</label>
+            <select class="ds-select" id="dm-role" name="role" required>
+              <option value="">Choose…</option>
+              <option value="owner_director">Owner or director</option>
+              <option value="operations">Operations or practice manager</option>
+              <option value="adviser">Mortgage adviser</option>
+              <option value="compliance">Compliance</option>
+              <option value="other">Something else</option>
+            </select>
+            <p class="dm-error" id="dm-role-error" hidden></p>
+          </div>
+          <div class="ds-field">
+            <label class="ds-label" for="dm-size">People in your firm</label>
+            <select class="ds-select" id="dm-size" name="firmSize" required>
+              <option value="">Choose…</option>
+              <option value="1-5">1–5</option>
+              <option value="6-20">6–20</option>
+              <option value="21-50">21–50</option>
+              <option value="51-200">51–200</option>
+              <option value="200+">More than 200</option>
+            </select>
+            <p class="dm-error" id="dm-firmSize-error" hidden></p>
+          </div>
+        </div>
+        <div class="ds-field">
+          <label class="ds-label" for="dm-message">Anything you’d like us to focus on? <span class="dm-optional">Optional</span></label>
+          <textarea class="ds-textarea" id="dm-message" name="message" rows="3" maxlength="1500"></textarea>
+        </div>
+        <div class="dm-hp" aria-hidden="true">
+          <label for="dm-website">Leave this empty</label>
+          <input id="dm-website" name="website" tabindex="-1" autocomplete="off">
+        </div>
+        <button class="ds-btn ds-btn--pop ds-btn--lg dm-submit" type="submit">Book my demo</button>
+        <p class="dm-status" id="dm-status" role="alert" hidden></p>
+        <p class="dm-privacy">We only use these details to arrange your demo. We don’t share them or add you to a mailing list.</p>
+      </form>
+    </section>
+  </div>
+</main>
+
+<footer class="lp-footer">
+  <div class="ds-container lp-footer__inner">
+    <p class="lp-footer__brand">BuildA<span class="lp-plus">+</span></p>
+    <p>Operational intelligence for mortgage firms. Implementation delivered with JADA.</p>
+    <p class="lp-footer__small">BuildA+ does not provide mortgage advice or make regulated decisions.</p>
+  </div>
+</footer>
+</body>
+</html>

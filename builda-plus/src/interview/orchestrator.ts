@@ -6,12 +6,14 @@ import { scanForClientData } from '../guards/clientData';
 import { ESCALATION_MESSAGES, flagEscalation, keywordEscalation, type EscalationReason } from '../guards/escalation';
 import { cardsForStage, type Playbook } from '../knowledge/playbook';
 import { OPENING_MESSAGE, interpretPrompt, questionPrompt } from './prompts';
+import { knowledgeTurn, type KnowledgeContext, type SessionKnowledge, type KnowledgeOutcome } from '../understanding/engine';
 
 // The orchestrator is a state machine. Code decides what happens next;
 // the LLM only interprets answers and words questions (brief §3.5, §8.2).
 
 export type SessionStatus = 'in_progress' | 'paused' | 'completed' | 'escalated';
-export interface StageCoverage { evidenceCount: number; questionsAsked: number; notInvolved: boolean }
+// unsure: how many times they said they didn't know something on this stage (older sessions don't have it).
+export interface StageCoverage { evidenceCount: number; questionsAsked: number; notInvolved: boolean; unsure?: number }
 
 export interface InterviewState {
   sessionId: string;
@@ -31,6 +33,10 @@ export interface InterviewState {
   mode?: 'main' | 'follow_up';
   followUpQueue?: FollowUpItem[];
   currentFollowUp?: FollowUpItem | null;
+  // Set once the open "anything else?" question has been asked, just before finishing.
+  closingAsked?: boolean;
+  // Knowledge engine only: gaps asked in this interview, the last move and the planner's log.
+  knowledge?: SessionKnowledge;
 }
 
 export interface FollowUpItem { id: string; painPointKey: string; stageId: StageId; question: string }
@@ -44,7 +50,9 @@ export type InterviewEvent =
   | { type: 'paused' } | { type: 'resumed' } | { type: 'completed'; reason: 'all_stages_covered' | 'turn_limit' };
 
 export interface TurnOutcome { state: InterviewState; reply: string; events: InterviewEvent[] }
+export const COMPLETED_MESSAGE = "That's everything I needed — thank you. Your answers will be combined with others' by role, and the firm lead will review the findings before any recommendations are made.";
 
+export const CLOSING_QUESTION = "Before we finish: is there anything else that slows your work down, or that you'd change if you could, that we haven't talked about?";
 export const LIMITS = { maxTurns: 40, maxQuestionsPerStage: 3, evidenceToCoverStage: 2, contextMessages: 8 };
 const WORKING_DAYS_PER_MONTH = 21;
 
@@ -74,8 +82,8 @@ export function startFollowUp(p: { discoveryId: string; participantRef: string; 
 }
 
 export async function handleParticipantMessage(
-  prev: InterviewState, text: string, deps: { llm: LLMProvider; playbook: Playbook },
-): Promise<TurnOutcome> {
+  prev: InterviewState, text: string, deps: { llm: LLMProvider; playbook: Playbook; firmContext?: string | null; knowledge?: KnowledgeContext },
+): Promise<KnowledgeOutcome> {
   const s = structuredClone(prev);
   const events: InterviewEvent[] = [];
   if (s.status === 'completed' || s.status === 'escalated') throw new Error(`Session is ${s.status}`);
@@ -101,6 +109,13 @@ export async function handleParticipantMessage(
   s.transcript.push({ role: 'user', content: text });
   s.turnCount += 1;
   const turnIndex = s.transcript.length - 1;
+
+  // Knowledge engine (design: knowledge-driven interviewing). Same guards above; follow-up sessions stay
+  // on the code-written questions below.
+  if (deps.knowledge && s.mode !== 'follow_up') {
+    return knowledgeTurn(s, text, turnIndex, events, { llm: deps.llm, firmContext: deps.firmContext, knowledge: deps.knowledge,
+      closingQuestion: CLOSING_QUESTION, completedMessage: COMPLETED_MESSAGE, escalate });
+  }
 
   // 2. Interpret the answer.
   const { data: interp } = await deps.llm.generateStructured({
@@ -129,6 +144,8 @@ export async function handleParticipantMessage(
   if (added.length) events.push({ type: 'evidence_added', ids: added });
   if (dropped) { s.droppedEvidenceCount += dropped; events.push({ type: 'evidence_dropped', count: dropped, reason: 'quote_not_found' }); }
   for (const stage of interp.stagesConfirmedNotInvolved) s.coverage[stage].notInvolved = true;
+  const unsure = !!interp.participantUnsure;
+  if (unsure && s.focusStage) s.coverage[s.focusStage].unsure = (s.coverage[s.focusStage].unsure ?? 0) + 1;
 
   if (interp.wantsToPause) {
     s.status = 'paused';
@@ -155,11 +172,19 @@ export async function handleParticipantMessage(
   }
 
   // 4. Code decides where the interview goes next.
-  const next = s.turnCount >= LIMITS.maxTurns ? null : chooseFocus(s, interp.answerWasVague);
+  const next = s.turnCount >= LIMITS.maxTurns ? null : chooseFocus(s, interp.answerWasVague && !unsure);
+  // Before finishing, one open question, so people can raise what the stages didn't cover.
+  // (Their answer is interpreted like any other; if it opens a topic in scope, the interview follows it.)
+  if (!next && !s.closingAsked && s.turnCount < LIMITS.maxTurns && s.turnCount >= 3) {
+    s.closingAsked = true;
+    const reply = CLOSING_QUESTION;
+    s.transcript.push({ role: 'assistant', content: reply });
+    return { state: s, reply, events };
+  }
   if (!next) {
     s.status = 'completed';
     events.push({ type: 'completed', reason: s.turnCount >= LIMITS.maxTurns ? 'turn_limit' : 'all_stages_covered' });
-    const reply = "That's everything I needed — thank you. Your answers will be combined with others' by role, and the firm lead will review the findings before any recommendations are made.";
+    const reply = COMPLETED_MESSAGE;
     s.transcript.push({ role: 'assistant', content: reply });
     return { state: s, reply, events };
   }
@@ -175,6 +200,9 @@ export async function handleParticipantMessage(
       role: s.role, focusStage: next.stage, reason: next.reason,
       cards: cardsForStage(deps.playbook, next.stage),
       alreadyKnown: s.evidence.filter((e) => e.stageId === next.stage).map((e) => e.taskDescription),
+      firmContext: deps.firmContext ?? null,
+      ...stageGaps(s, next.stage),
+      lastAnswerUnsure: unsure && next.stage === prev.focusStage,
     }),
     messages: recentContext(s.transcript),
     maxOutputTokens: 1000,
@@ -198,15 +226,47 @@ function escalate(s: InterviewState, reason: EscalationReason, events: Interview
   return { state: s, reply, events };
 }
 
-function needsWork(c: StageCoverage): boolean {
-  return !c.notInvolved && c.evidenceCount < LIMITS.evidenceToCoverStage && c.questionsAsked < LIMITS.maxQuestionsPerStage;
+const isProblem = (e: VerifiedEvidence) => !!(e.operationalImpact || e.reportedCause);
+
+// What is still missing on a stage. A problem someone raised isn't understood until we know roughly how
+// often it happens and how long it takes, so the interviewer stays on it (unless they've said they don't know).
+export function stageGaps(s: InterviewState, stage: StageId): { stillUnknown: string[]; raisedProblems: string[] } {
+  const ev = s.evidence.filter((e) => e.stageId === stage);
+  const problems = ev.filter(isProblem);
+  const stillUnknown: string[] = [];
+  if (!ev.length) stillUnknown.push('what they do here and what, if anything, gets in the way');
+  if (ev.length && !problems.length && !ev.some((e) => e.monthlyVolume !== null || e.minutesPerOccurrence !== null)) stillUnknown.push('roughly how often it happens or how long it takes');
+  if (problems.length) {
+    if (!ev.some((e) => e.monthlyVolume !== null)) stillUnknown.push('roughly how often it happens');
+    if (!ev.some((e) => e.minutesPerOccurrence !== null)) stillUnknown.push('roughly how long it takes each time');
+    if (!problems.some((e) => e.reportedCause)) stillUnknown.push('why it happens');
+    if (!problems.some((e) => e.potentialImprovement)) stillUnknown.push('what would make it easier');
+  }
+  return { stillUnknown, raisedProblems: [...new Set(problems.map((e) => e.taskDescription))].slice(0, 3) };
 }
 
+function needsWork(s: InterviewState, stage: StageId): boolean {
+  const c = s.coverage[stage];
+  if (c.notInvolved || c.questionsAsked >= LIMITS.maxQuestionsPerStage) return false;
+  const ev = s.evidence.filter((e) => e.stageId === stage);
+  const hasVolume = ev.some((e) => e.monthlyVolume !== null), hasTime = ev.some((e) => e.minutesPerOccurrence !== null);
+  // A passing mention in another answer doesn't cover a stage, unless it already gave the figures.
+  if (c.questionsAsked === 0 && !(hasVolume && hasTime)) return true;
+  if (c.evidenceCount < LIMITS.evidenceToCoverStage) return true;
+  if (c.unsure) return false;   // they've told us what they can; don't press
+  if (ev.some(isProblem)) return !hasVolume || !hasTime;
+  return !hasVolume && !hasTime && c.questionsAsked < 2;   // no figure at all yet: one more try
+}
+
+// Stay on the current topic while it needs work. When moving on, go first to a stage where they've already
+// raised a problem we haven't explored (following their thread, like a person would), then in journey order.
 export function chooseFocus(s: InterviewState, answerWasVague: boolean): { stage: StageId; reason: 'continue' | 'follow_up' | 'new_stage' } | null {
-  if (s.focusStage && needsWork(s.coverage[s.focusStage])) {
+  if (s.focusStage && needsWork(s, s.focusStage)) {
     return { stage: s.focusStage, reason: answerWasVague ? 'follow_up' : 'continue' };
   }
-  const nextStage = STAGE_IDS.find((id) => s.stagesInScope.includes(id) && needsWork(s.coverage[id]));
+  const open = STAGE_IDS.filter((id) => s.stagesInScope.includes(id) && needsWork(s, id));
+  const raised = open.find((id) => s.evidence.some((e) => e.stageId === id && isProblem(e)));
+  const nextStage = raised ?? open[0];
   return nextStage ? { stage: nextStage, reason: 'new_stage' } : null;
 }
 
@@ -214,11 +274,8 @@ function recentContext(t: LLMMessage[]): LLMMessage[] {
   return t.slice(-LIMITS.contextMessages);
 }
 
-const norm = (x: string) => x.toLowerCase().replace(/[‘’]/g, "'").replace(/[^a-z0-9' ]+/g, ' ').replace(/\s+/g, ' ').trim();
-export function quoteAppearsIn(quote: string, source: string): boolean {
-  const q = norm(quote);
-  return q.length >= 3 && norm(source).includes(q);
-}
+export { quoteAppearsIn } from './quotes';
+import { quoteAppearsIn } from './quotes';
 
 export function normaliseEvidence(d: EvidenceDraft, meta: { sessionId: string; participantRef: string; turnIndex: number }): VerifiedEvidence {
   const assumptions: string[] = [];

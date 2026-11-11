@@ -7,11 +7,11 @@ import { ScriptedProvider } from '../src/llm/mock';
 import { GuideService, loadGuideContent } from '../src/guide/service';
 import type { LLMProvider } from '../src/llm/provider';
 
-// Plus, the in-app guide: grounded in builda+'s written help, signed-in only, no firm data sent to the AI.
+// Plus, the in-app guide: grounded in BuildA+'s written help, signed-in only, no firm data sent to the AI.
 const publicDir = join(__dirname, '..', 'public');
 const SECRET = 'guide-test-secret-guide-test-secret-123';
 const auth = new DevCookieAuth(SECRET);
-const app = (llm: LLMProvider | null) => buildApp({
+const app = (llm: LLMProvider | null) => buildApp({ laterStages: true,
   db: {} as any, interviews: {} as any, firms: {} as any, participants: {} as any, analysis: {} as any,
   decisions: {} as any, jada: {} as any, firmAuth: auth, jadaAuth: auth, guide: { llm },
   sessionSecret: SECRET, consent: { retentionMonths: 12, jadaContact: 'test' }, secureCookies: false, publicDir,
@@ -28,7 +28,7 @@ describe('Plus: grounded AI answers', () => {
     expect((await ask(app(new ScriptedProvider({ 'guide.ask': [reply()] })), { question: 'hi' }, {} as any)).statusCode).toBe(401);
   });
 
-  it('grounds the AI in builda+’s help and the page, and never sends firm data', async () => {
+  it('grounds the AI in BuildA+’s help and the page, and never sends firm data', async () => {
     const llm = new ScriptedProvider({ 'guide.ask': [reply()] });
     const r = await ask(app(llm), { question: 'I am confused about this page', pageKey: 'disc-evidence', nextStep: 'Review and validate findings' });
     expect(r.statusCode).toBe(200);
@@ -36,8 +36,19 @@ describe('Plus: grounded AI answers', () => {
     const sent = JSON.stringify(llm.calls[0]);
     expect(sent).toContain(content.pages['disc-evidence']!.purpose);          // the current page's help
     expect(sent).toContain('Review and validate findings');                    // the next step the page shows
-    expect(sent).toContain('Use ONLY the builda+ help');                       // grounding rule
+    expect(sent).toContain('Use ONLY the BuildA+ help');                       // grounding rule
     expect(sent).toContain('Never give mortgage, financial, legal or compliance advice');
+  });
+
+  it('can explain the options on its own forms (a definition is not advice)', async () => {
+    const llm = new ScriptedProvider({ 'guide.ask': [reply({ answer: 'Mortgages for older borrowers.', goTo: null })] });
+    await ask(app(llm), { question: 'what is later life lending', pageKey: 'profile' });
+    const sent = JSON.stringify(llm.calls[0]);
+    expect(sent).toContain('Explaining what a word or an option on a BuildA+ page means is NOT advice');
+    expect(sent).toContain('Later life lending: Mortgages for older borrowers');
+    for (const t of ['Residential purchase', 'Buy-to-let', 'Protection', 'Commercial and specialist', 'Directly authorised', 'Appointed representative of a network'])
+      expect(content.terms!.map((x) => x.term), t).toContain(t);
+    expect(source).toContain('(content.terms || []).map(');                      // the written fallback finds them too
   });
 
   it('refuses questions with client details before anything reaches the AI', async () => {
@@ -88,7 +99,7 @@ describe('Plus: the page', () => {
     }
   });
 
-  it('only talks to builda+ itself, never to an outside service', () => {
+  it('only talks to BuildA+ itself, never to an outside service', () => {
     const urls = [...source.matchAll(/fetch\('([^']+)'/g)].map((m) => m[1]);
     expect(urls.sort()).toEqual(['/api/guide/ask', '/static/guide-content.json']);
     expect(source.replace("'http://www.w3.org/2000/svg'", '')).not.toMatch(/https?:\/\//);   // the SVG namespace is an identifier, not a request

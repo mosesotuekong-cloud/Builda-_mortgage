@@ -37,6 +37,8 @@ export const TurnInterpretationSchema = z.object({
   }),
   wantsToPause: z.boolean(),
   answerWasVague: z.boolean(),
+  // They said they don't know or can't estimate what was asked. The interviewer accepts that and moves on.
+  participantUnsure: z.boolean().default(false),
 });
 export type TurnInterpretation = z.infer<typeof TurnInterpretationSchema>;
 
@@ -64,4 +66,5 @@ export interface VerifiedEvidence {
   supportingQuote: string;
   outstandingQuestions: string[];
   conversionAssumptions: string[];
+  nodeId?: string;   // the knowledge node this row was projected from (knowledge engine only)
 }

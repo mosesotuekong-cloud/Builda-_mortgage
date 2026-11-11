@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>builda+ — Operational intelligence for mortgage firms</title>
-<meta name="description" content="builda+ helps mortgage firms understand how their operations work, uncover inefficiencies and decide what to overhaul, fix, automate or keep human.">
+<title>BuildA+ — Operational intelligence for mortgage firms</title>
+<meta name="description" content="BuildA+ helps mortgage firms understand how their operations work, uncover inefficiencies and decide what to overhaul, fix, automate or keep human.">
 <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
 <link rel="stylesheet" href="/static/design-system.css">
 <link rel="stylesheet" href="/static/landing.css">
@@ -16,8 +16,8 @@
 <!-- A. Navigation -->
 <header class="ds-nav">
   <div class="ds-container ds-nav__inner">
-    <a class="ds-nav__brand" href="/" aria-label="builda+ home">
-      <span class="lp-mark" aria-hidden="true"></span><span>builda<span class="lp-plus">+</span></span>
+    <a class="ds-nav__brand" href="/" aria-label="BuildA+ home">
+      <span class="lp-mark" aria-hidden="true"></span><span>BuildA<span class="lp-plus">+</span></span>
     </a>
     <button class="ds-btn ds-btn--ghost ds-nav__toggle" type="button" aria-expanded="false" aria-controls="lp-menu">
       <span class="lp-burger" aria-hidden="true"></span>Menu
@@ -30,7 +30,7 @@
       </ul>
       <div class="ds-nav__actions">
         <a class="ds-btn ds-btn--ghost" href="/signin" id="lp-signin" hidden>Sign in</a>
-        <a class="ds-btn ds-btn--primary" href="#assessment">Request an initial assessment</a>
+        <a class="ds-btn ds-btn--pop" href="/demo">Book a demo</a>
       </div>
     </nav>
   </div>
@@ -43,28 +43,36 @@
     <div class="ds-container lp-hero__grid">
       <div class="lp-hero__copy">
         <p class="ds-eyebrow">Operational intelligence for mortgage firms</p>
-        <h1 class="ds-display" id="hero-title">Your mortgage operation has opportunities hiding in plain sight.</h1>
+        <h1 class="ds-display" id="hero-title">Your mortgage operation has opportunities <span class="lp-pop">hiding in plain sight.</span></h1>
         <p class="ds-lead">We help mortgage firms understand how their operations work, uncover inefficiencies and identify where process improvement, automation and AI can deliver meaningful value.</p>
         <div class="ds-btn-group">
-          <a class="ds-btn ds-btn--primary ds-btn--lg" href="#what-we-do">Explore your opportunities</a>
-          <a class="ds-btn ds-btn--secondary ds-btn--lg" href="#how-it-works">How it works</a>
+          <a class="ds-btn ds-btn--pop ds-btn--lg" href="/demo">Book a demo</a>
+          <a class="ds-btn ds-btn--secondary ds-btn--lg" href="#how-it-works">See how it works</a>
         </div>
-        <p class="lp-hero__note">Discovery looks at how work moves through your firm, never at individual performance. builda+ does not give mortgage advice.</p>
+        <p class="lp-hero__note">Discovery looks at how work moves through your firm, never at individual performance. BuildA+ does not give mortgage advice.</p>
       </div>
 
-      <figure class="lp-preview" aria-labelledby="preview-caption">
+      <figure class="lp-preview" id="lp-preview" aria-labelledby="preview-caption">
         <div class="lp-preview__bar">
-          <span class="lp-preview__title">Discovery findings</span>
+          <span class="lp-preview__title"><span class="lp-preview__live" aria-hidden="true"></span><span id="lp-preview-status">Discovery findings</span></span>
           <span class="lp-preview__tag">Illustrative example</span>
         </div>
-        <ol class="lp-preview__journey" aria-label="Mortgage journey">
-          <li>Enquiry</li><li>Fact find</li><li class="is-active">Documents</li><li>Application</li><li>Offer</li><li>Completion</li>
-        </ol>
+        <dl class="lp-preview__stats" aria-hidden="true">
+          <div><dt>Interviews</dt><dd data-count="6">6</dd></div>
+          <div><dt>Evidence</dt><dd data-count="37">37</dd></div>
+          <div><dt>Findings</dt><dd data-count="3">3</dd></div>
+        </dl>
+        <div class="lp-preview__track">
+          <ol class="lp-preview__journey" aria-label="Mortgage journey">
+            <li>Enquiry</li><li>Fact find</li><li class="is-active">Documents</li><li>Recommendation</li><li>Application</li><li>Completion</li>
+          </ol>
+          <span class="lp-preview__pointer" aria-hidden="true"></span>
+        </div>
         <div class="lp-preview__list">
-          <article class="lp-finding">
+          <article class="lp-finding" data-stage="2">
             <div class="lp-finding__top">
               <h3 class="lp-finding__title">Manual chasing of outstanding documents</h3>
-              <span class="ds-class ds-class--automate">Automate</span>
+              <span class="ds-class ds-class--automate lp-stamp">Automate</span>
             </div>
             <p class="lp-finding__meta">Documents · reported by case managers and administrators</p>
             <div class="ds-cluster">
@@ -73,10 +81,18 @@
             </div>
             <p class="lp-finding__note">Staff approve every message before it is sent.</p>
           </article>
-          <article class="lp-finding">
+          <article class="lp-finding" data-stage="3">
+            <div class="lp-finding__top">
+              <h3 class="lp-finding__title">Preparing the suitability recommendation</h3>
+              <span class="ds-class ds-class--keep-human lp-stamp">Keep human</span>
+            </div>
+            <p class="lp-finding__meta">Recommendation · regulated judgement</p>
+            <p class="lp-finding__note">Advice stays with the adviser. Only the admin around it is in scope.</p>
+          </article>
+          <article class="lp-finding" data-stage="4">
             <div class="lp-finding__top">
               <h3 class="lp-finding__title">Fact-find data re-keyed for lender submissions</h3>
-              <span class="ds-class ds-class--fix">Fix</span>
+              <span class="ds-class ds-class--fix lp-stamp">Fix</span>
             </div>
             <p class="lp-finding__meta">Application · reported by one case manager</p>
             <div class="ds-cluster">
@@ -85,16 +101,9 @@
             </div>
             <p class="lp-finding__note">Follow-up questions sent to confirm volumes.</p>
           </article>
-          <article class="lp-finding">
-            <div class="lp-finding__top">
-              <h3 class="lp-finding__title">Preparing the suitability recommendation</h3>
-              <span class="ds-class ds-class--keep-human">Keep human</span>
-            </div>
-            <p class="lp-finding__meta">Recommendation · regulated judgement</p>
-            <p class="lp-finding__note">Advice stays with the adviser. Only the admin around it is in scope.</p>
-          </article>
         </div>
-        <figcaption id="preview-caption" class="ds-visually-hidden">Illustrative example of builda+ discovery findings: each finding shows its journey stage, evidence source, confidence and classification. Not real firm data.</figcaption>
+        <p class="lp-preview__decision"><span class="lp-preview__tick" aria-hidden="true">✓</span>Ready for your decision: approve, challenge or reject each one.</p>
+        <figcaption id="preview-caption" class="ds-visually-hidden">Illustrative example of BuildA+ discovery findings: each finding shows its journey stage, evidence source, confidence and classification. Not real firm data.</figcaption>
       </figure>
     </div>
   </section>
@@ -117,7 +126,7 @@
         <li class="lp-area"><h3 class="ds-h4">Completion</h3><p>Final checks and conveyancer coordination that rely on individual follow-up.</p></li>
         <li class="lp-area"><h3 class="ds-h4">Renewals and aftercare</h3><p>Product expiries and reviews that depend on someone remembering to act.</p></li>
       </ul>
-      <p class="lp-footnote">Every firm is different. These are places we look, not problems we assume you have. builda+ only reports what the evidence from your firm supports.</p>
+      <p class="lp-footnote">Every firm is different. These are places we look, not problems we assume you have. BuildA+ only reports what the evidence from your firm supports.</p>
     </div>
   </section>
 
@@ -163,7 +172,7 @@
       <div class="lp-approach__head">
         <p class="ds-eyebrow lp-approach__eyebrow">Our approach</p>
         <h2 class="ds-h2 lp-approach__title" id="approach-title">Not everything needs AI.</h2>
-        <p class="lp-approach__lead">The most useful answer isn't always a new tool. Some problems come from how a process is designed. Some need a simple operational change. Some suit conventional automation, a few genuinely benefit from AI, and some should stay with people. builda+ classifies every finding before recommending anything.</p>
+        <p class="lp-approach__lead">The most useful answer isn't always a new tool. Some problems come from how a process is designed. Some need a simple operational change. Some suit conventional automation, a few genuinely benefit from AI, and some should stay with people. BuildA+ classifies every finding before recommending anything.</p>
       </div>
       <ul class="lp-classes">
         <li class="lp-class">
@@ -197,7 +206,7 @@
       <div class="lp-section__head">
         <p class="ds-eyebrow">Built for mortgage operations</p>
         <h2 class="ds-h2" id="mortgage-title">Built around the mortgage journey.</h2>
-        <p class="ds-lead">builda+ understands the stages a case moves through and which roles are involved at each one. It looks at the operational work around each stage, not at the advice itself.</p>
+        <p class="ds-lead">BuildA+ understands the stages a case moves through and which roles are involved at each one. It looks at the operational work around each stage, not at the advice itself.</p>
       </div>
       <ol class="lp-journey" aria-label="Mortgage journey stages">
         <li><span class="lp-journey__n" aria-hidden="true">1</span>Enquiry</li>
@@ -213,7 +222,7 @@
       </ol>
       <div class="lp-journey__legend">
         <span class="lp-legend-mark" aria-hidden="true"></span>
-        <p>Stages involving regulated judgement. builda+ looks only at the preparation and admin around them.</p>
+        <p>Stages involving regulated judgement. BuildA+ looks only at the preparation and admin around them.</p>
       </div>
       <div class="lp-mortgage-grid">
         <div class="lp-roles">
@@ -226,7 +235,7 @@
           </ul>
         </div>
         <div class="ds-alert ds-alert--info lp-boundary">
-          <p class="ds-alert__title">What builda+ doesn't do</p>
+          <p class="ds-alert__title">What BuildA+ doesn't do</p>
           <p>It doesn't provide mortgage advice, assess suitability for a client or make lending decisions. Client files and client data are kept out of discovery.</p>
         </div>
       </div>
@@ -247,7 +256,7 @@
         </li>
         <li class="lp-principle">
           <h3 class="ds-h4">Human accountability</h3>
-          <p>builda+ advises and prepares. Your people make the decisions, and every correction to a finding is recorded.</p>
+          <p>BuildA+ advises and prepares. Your people make the decisions, and every correction to a finding is recorded.</p>
         </li>
         <li class="lp-principle">
           <h3 class="ds-h4">Privacy and data minimisation</h3>
@@ -262,7 +271,7 @@
           <p>Recommendations are tied to operational measures agreed in advance, so improvement is judged on evidence rather than expectation.</p>
         </li>
       </ul>
-      <p class="lp-footnote">builda+ is not approved or endorsed by the FCA, and its findings are not legal or compliance advice.</p>
+      <p class="lp-footnote">BuildA+ is not approved or endorsed by the FCA, and its findings are not legal or compliance advice.</p>
     </div>
   </section>
 
@@ -271,12 +280,10 @@
     <div class="ds-container ds-container--narrow lp-cta__inner">
       <h2 class="ds-h2 lp-cta__title" id="cta-title">Find out where your mortgage operation can improve.</h2>
       <p class="lp-cta__text">An initial assessment starts with a short conversation about how your firm works, followed by independent interviews with the people who do the work. You see what was found, the evidence behind it and what we'd recommend, before you decide anything.</p>
-      <details class="lp-request">
-        <summary class="lp-request__summary"><span class="ds-btn ds-btn--accent ds-btn--lg">Request an initial assessment</span></summary>
-        <div class="lp-request__panel" role="note">
-          <p><strong>Online requests aren't open yet.</strong> Initial assessments are currently arranged directly with the JADA team. If you've been introduced to JADA, ask your contact to set one up.</p>
-        </div>
-      </details>
+      <div class="ds-btn-group lp-cta__actions">
+        <a class="ds-btn ds-btn--pop ds-btn--lg" href="/demo">Book a demo</a>
+      </div>
+      <p class="lp-cta__small">A 30-minute walkthrough with the JADA team. No commitment.</p>
     </div>
   </section>
 
@@ -284,9 +291,9 @@
 
 <footer class="lp-footer">
   <div class="ds-container lp-footer__inner">
-    <p class="lp-footer__brand">builda<span class="lp-plus">+</span></p>
+    <p class="lp-footer__brand">BuildA<span class="lp-plus">+</span></p>
     <p>Operational intelligence for mortgage firms. Implementation delivered with JADA.</p>
-    <p class="lp-footer__small">builda+ does not provide mortgage advice or make regulated decisions.</p>
+    <p class="lp-footer__small">BuildA+ does not provide mortgage advice or make regulated decisions.</p>
   </div>
 </footer>
 </body>

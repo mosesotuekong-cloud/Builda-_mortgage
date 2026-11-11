@@ -12,6 +12,9 @@ export interface StructuredRequest<T> {
   schemaName: string;
   maxOutputTokens?: number;
   maxAttempts?: number;
+  // How much hidden reasoning the model may do before answering. 'low' is much faster for extraction.
+  // Providers that don't support it ignore it.
+  effort?: 'low' | 'medium' | 'high';
 }
 export interface StructuredResult<T> { data: T; usage: LLMUsage }
 

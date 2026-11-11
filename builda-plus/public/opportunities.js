@@ -1,5 +1,5 @@
 'use strict';
-// builda+ opportunity intelligence (Phase 4). Loaded after discovery.js and before workspace.js; uses their
+// BuildA+ opportunity intelligence (Phase 4). Loaded after discovery.js and before workspace.js; uses their
 // helpers at call time. Everything shown comes from GET /api/firm/discoveries/:id/opportunities, which is
 // computed by fixed rules from discovery evidence. Nothing here estimates, ranks or fills in a figure.
 
@@ -38,10 +38,12 @@ async function opportunitiesPage(ws, discoveryId, oppId) {
 
 function dashboard(ws, intel, picker) {
   const id = intel.discovery.id, s = intel.summary, list = intel.opportunities;
-  const head = pageHeader('Opportunities', 'What discovery found, classified and prioritised by fixed rules. Approve the ones that should go to JADA engineering review.');
+  const head = pageHeader('Opportunities', FEATURES.laterStages
+    ? 'What discovery found, classified and prioritised by fixed rules. Approve the ones that should go to JADA engineering review.'
+    : 'What discovery found, classified and prioritised by fixed rules. Approve the ones that matter most to your firm.');
   if (!list.length) return [head, picker, empty('No opportunities yet', 'Analysis didn’t produce any findings for this discovery. Check the interviews and run the analysis again.', linkBtn(`/app/discovery/${id}`, 'Open discovery', 'primary'), 'opportunities'), hypothesesSection(intel)];
   const stats = el('dl', { class: 'ws-stats op-stats' }, ...[
-    [s.total, 'Opportunities'], [s.prioritised, 'Prioritised'], [s.readyForReview, 'Ready for your decision'], [s.awaitingValidation, 'Awaiting validation'],
+    [s.total, 'Opportunities'], [s.prioritised, 'Prioritised'], [s.readyForReview, 'Ready for your decision'],
     [s.needsEvidence + s.needsClassification + s.complianceReview, 'Held back'], [s.approved, 'Approved'],
   ].map(([v, l]) => el('div', { class: 'ws-stat' }, el('dt', { class: 'ws-stat__label' }, l), el('dd', { class: 'ws-stat__value' }, String(v)))));
   const byClass = el('p', { class: 'ds-cluster op-classes' }, ...['overhaul', 'fix', 'automate', 'keep_human'].map((c) => el('span', { class: 'ds-cluster' }, classification(c), el('span', { class: 'ws-subtle' }, String(s.byClassification[c])))),
@@ -56,13 +58,13 @@ function dashboard(ws, intel, picker) {
     sel('stage', 'Stage', stages), sel('classification', 'Classification', Object.entries(CLASSIFICATION).map(([k, [, l]]) => [k, l])),
     sel('priority', 'Priority', [['High', 'High'], ['Medium', 'Medium'], ['Low', 'Low'], ['unranked', 'Not ranked']]),
     sel('confidence', 'Confidence', Object.entries(CONFIDENCE).map(([k, [, l]]) => [k, l])),
-    sel('status', 'Review status', Object.entries(OPP_STATUS).map(([k, [l]]) => [k, l])));
+    sel('status', 'Review status', Object.entries(OPP_STATUS).filter(([k]) => FEATURES.laterStages || k !== 'sent_to_engineering').map(([k, [l]]) => [k, l])));
   const results = el('div', {});
   const apply = () => {
     const f = Object.fromEntries([...new FormData(filters)].filter(([, v]) => v));
     const p = new URLSearchParams(location.search);
     for (const k of ['stage', 'classification', 'priority', 'confidence', 'status']) { if (f[k]) p.set(k, f[k]); else p.delete(k); }
-    history.replaceState(null, '', `${location.pathname}${p.toString() ? `?${p}` : ''}`);
+    history.replaceState(null, '', `${location.pathname}${p.toString() ? `?${p}` : ''}${location.hash}`);
     const shown = list.filter((o) => (!f.stage || o.stageId === f.stage) && (!f.classification || o.classification === f.classification)
       && (!f.priority || (f.priority === 'unranked' ? o.priorityRank === null : o.band === f.priority))
       && (!f.confidence || o.evidence.dimensions.existence.level === f.confidence) && (!f.status || o.status === f.status));
@@ -71,7 +73,9 @@ function dashboard(ws, intel, picker) {
   filters.addEventListener('change', apply);
   apply();
   return [head, picker, stats, byClass, filters, results, hypothesesSection(intel), methodSection(intel),
-    el('div', { class: 'ws-section' }, el('details', { class: 'op-details', open: !(ws.discoveries.find((d) => d.id === id) || {}).reportedAt }, el('summary', {}, 'Create the discovery report'), el('div', { class: 'op-details__body', 'data-load': id })))]
+    // Selling the discovery: the report is the deliverable, so it's always open. With later stages on it folds away once created.
+    el('div', { class: 'ws-section', id: 'report' }, el('details', { class: 'op-details', open: !FEATURES.laterStages || !(ws.discoveries.find((d) => d.id === id) || {}).reportedAt },
+      el('summary', {}, FEATURES.laterStages ? 'Create the discovery report' : 'Your discovery report'), el('div', { class: 'op-details__body', 'data-load': id })))]
     .map((n) => (n && n.querySelector && n.querySelector('[data-load]') ? lazyDecisions(n, ws) : n));
 }
 
@@ -111,7 +115,7 @@ function resultsView(intel, shown, filtered) {
     el('ul', { class: 'ws-list op-held' }, ...held.map((o) => el('li', {},
       el('span', { class: 'ds-stack op-held__main' }, el('span', { class: 'ds-cluster' }, el('a', { href: oUrl(id, o.id) }, o.title), classification(o.classification), o.status === 'keep_human' ? null : oppStatus(o.status)),
         el('span', { class: 'ws-subtle' }, `${o.stageName} · ${(o.gates.filter((g) => g.blocksPriority).map((g) => g.label).join('; ')) || (o.status === 'rejected' ? 'Rejected by you' : o.needsReassessment || 'Not scored')}`)))))));
-  out.push(el('p', { class: 'ds-help ws-section' }, 'Hours are operational capacity from your team’s estimates, not a cash saving. “Unknown” means a figure is missing; builda+ never fills it in.'));
+  out.push(el('p', { class: 'ds-help ws-section' }, 'Hours are operational capacity from your team’s estimates, not a cash saving. “Unknown” means a figure is missing; BuildA+ never fills it in.'));
   return out;
 }
 
@@ -269,7 +273,7 @@ function actionView(o) {
 
 function reviewView(intel, o) {
   const id = intel.discovery.id, base = `/api/firm/discoveries/${id}/opportunities/${o.id}`;
-  const approveBlockers = o.gates.filter((g) => g.blocksPriority || g.code === 'not_validated');
+  const approveBlockers = o.gates.filter((g) => g.blocksPriority);
   const reason = el('textarea', { class: 'ds-textarea', id: 'op-decision-reason', rows: '2', maxlength: '1000' });
   const m = msgEl();
   const decide = (decision) => async () => {
@@ -279,7 +283,7 @@ function reviewView(intel, o) {
   };
   const btn = (label, kind, decision, disabled) => el('button', { class: `ds-btn ds-btn--${kind}`, type: 'button', disabled, onclick: decide(decision) }, label);
   const latest = o.decision.latest;
-  const decisionBox = o.status === 'sent_to_engineering' ? firmEngineeringBox(intel, o)
+  const decisionBox = o.status === 'sent_to_engineering' && FEATURES.laterStages ? firmEngineeringBox(intel, o)
     : el('div', { class: 'ws-fieldset ds-stack' },
       latest ? el('p', { class: 'ds-body-sm' }, el('strong', {}, `${DECISION_LABEL[latest]}`), o.decision.at ? ` on ${fmtDateTime(o.decision.at)}` : '', o.decision.reason ? ` — ${o.decision.reason}` : '') : null,
       approveBlockers.length && latest !== 'approved' ? alertBox('info', 'Can’t be approved yet', approveBlockers.map((g) => g.label).join('. ') + (approveBlockers.some((g) => g.code === 'not_validated') ? '. Validate the finding in discovery first.' : '.')) : null,
@@ -288,8 +292,8 @@ function reviewView(intel, o) {
         latest !== 'approved' ? btn('Approve', 'primary', 'approved', approveBlockers.length > 0) : null,
         btn('Challenge', 'secondary', 'challenged', false), latest !== 'rejected' ? btn('Reject', 'secondary', 'rejected', false) : null,
         latest ? btn('Reopen', 'ghost', 'reopened', false) : null, m),
-      o.validated ? null : el('p', { class: 'ds-help' }, el('a', { href: dUrl(id, 'findings', o.id) }, 'Validate this finding in discovery'), ' before approving it.'));
-  return el('div', { class: 'ds-stack' }, decisionBox, engineeringBox(intel, o), historyList(intel, o));
+      null);
+  return el('div', { class: 'ds-stack' }, decisionBox, FEATURES.laterStages ? engineeringBox(intel, o) : null, historyList(intel, o));
 }
 
 function engineeringBox(intel, o) {

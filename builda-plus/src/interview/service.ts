@@ -7,6 +7,10 @@ import type { LLMProvider } from '../llm/provider';
 import type { Playbook } from '../knowledge/playbook';
 import { handleParticipantMessage, pauseInterview, startInterview, type InterviewEvent, type InterviewState, type SessionStatus } from './orchestrator';
 import { STAGES } from '../domain/journey';
+import { firmContextBrief, parseProfile } from './firmContext';
+import type { DomainPack } from '../understanding/pack';
+import type { KnowledgeContext } from '../understanding/engine';
+import { loadKnowledge, saveKnowledge } from '../understanding/store';
 
 export class ConsentRequiredError extends Error {}
 export class SessionClosedError extends Error {}
@@ -21,6 +25,9 @@ export interface InterviewServiceDeps {
   // A provider per discovery, so the token budget and usage ledger are scoped correctly.
   providerFor: (ctx: { orgId: string; discoveryId: string }) => LLMProvider;
   playbook: Playbook;
+  // The knowledge engine (design: knowledge-driven interviewing). When set, main interviews build and use
+  // the knowledge layer; follow-up sessions and the analysis are unchanged.
+  knowledge?: { pack: DomainPack };
 }
 
 export interface SessionView {
@@ -98,7 +105,19 @@ export class InterviewService {
   async submitMessage(ctx: FirmContext, sessionId: string, text: string): Promise<SessionView & { reply: string }> {
     if (text.length > 4000) throw new MessageTooLongError('Please keep each answer under 4,000 characters');
     // 1. Load (short transaction).
-    const loaded = await withFirmContext(this.db, ctx, (tx) => loadSession(tx, sessionId));
+    const { loaded, firmContext, knowledge } = await withFirmContext(this.db, ctx, async (tx) => {
+      const loaded = await loadSession(tx, sessionId);
+      // The firm profile, so questions fit this firm (see firmContext.ts for what is and isn't passed on).
+      const r = await tx.query('select firm_profile from discoveries where id = $1', [loaded.discoveryId]);
+      // The whole discovery's knowledge, so later interviews build on earlier ones (labels only reach the AI).
+      let knowledge: KnowledgeContext | undefined;
+      if (this.deps.knowledge && (loaded.state.mode ?? 'main') === 'main') {
+        const k = await loadKnowledge(tx, loaded.discoveryId);
+        knowledge = { snapshot: { nodes: k.nodes, claims: k.claims, evidence: k.evidence }, pack: this.deps.knowledge.pack,
+          variationProbed: new Set(k.gaps.filter((g) => g.predicate === 'variation' && g.status === 'answered').map((g) => g.subjectId)) };
+      }
+      return { loaded, firmContext: firmContextBrief(parseProfile(r.rows[0]?.firm_profile)), knowledge };
+    });
     if (loaded.state.status === 'completed' || loaded.state.status === 'escalated') {
       throw new SessionClosedError(`This interview is ${loaded.state.status}`);
     }
@@ -109,6 +128,8 @@ export class InterviewService {
       outcome = await handleParticipantMessage(loaded.state, text, {
         llm: this.deps.providerFor({ orgId: ctx.orgId, discoveryId: loaded.discoveryId }),
         playbook: this.deps.playbookFor ? await this.deps.playbookFor(ctx, loaded.discoveryId) : this.deps.playbook,
+        firmContext,
+        knowledge,
       });
     } catch (err) {
       await withFirmContext(this.db, ctx, (tx) => insertAudit(tx, [{
@@ -120,10 +141,11 @@ export class InterviewService {
     }
 
     // 3. Save everything from this turn atomically, guarded by the version check.
-    const { state: next, reply, events } = outcome;
+    const { state: next, reply, events, knowledge: knowledgeWrites } = outcome;
     const newEvidenceIds = new Set(events.flatMap((e) => (e.type === 'evidence_added' ? e.ids : [])));
     await withFirmContext(this.db, ctx, async (tx) => {
       await saveSession(tx, sessionId, loaded.version, next);
+      if (knowledgeWrites) await saveKnowledge(tx, { orgId: ctx.orgId, discoveryId: loaded.discoveryId, sessionId }, knowledgeWrites);
       await insertEvidence(tx, ctx.orgId, loaded.discoveryId, next.evidence.filter((e) => newEvidenceIds.has(e.id)));
 
       if (next.status === 'escalated' && loaded.state.status !== 'escalated' && next.escalation) {

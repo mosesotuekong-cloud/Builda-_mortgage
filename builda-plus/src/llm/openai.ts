@@ -6,6 +6,7 @@ export class OpenAIProvider implements LLMProvider {
   readonly name = 'openai';
   private client: OpenAI;
   private model: string;
+  private effortUnsupported = false;   // set if the model rejects reasoning_effort, so we stop sending it
 
   constructor(opts: { apiKey?: string; model?: string } = {}) {
     const model = opts.model ?? process.env.OPENAI_MODEL;
@@ -23,12 +24,22 @@ export class OpenAIProvider implements LLMProvider {
     let inputTokens = 0, outputTokens = 0, issues = '';
 
     for (let attempt = 0; attempt < (req.maxAttempts ?? 2); attempt++) {
-      const res = await this.client.chat.completions.create({
+      const body = {
         model: this.model,
         messages,
-        response_format: { type: 'json_schema', json_schema: { name: req.schemaName, schema, strict: false } },
+        response_format: { type: 'json_schema' as const, json_schema: { name: req.schemaName, schema, strict: false } },
         max_completion_tokens: req.maxOutputTokens ?? 4000,
-      });
+        ...(req.effort && !this.effortUnsupported ? { reasoning_effort: req.effort } : {}),
+      };
+      let res;
+      try { res = await this.client.chat.completions.create(body); }
+      catch (err) {
+        // A model without reasoning controls: drop the setting and carry on, rather than fail the turn.
+        if (!('reasoning_effort' in body) || !/reasoning_effort/i.test((err as Error).message)) throw err;
+        this.effortUnsupported = true;
+        const { reasoning_effort: _r, ...plain } = body;
+        res = await this.client.chat.completions.create(plain);
+      }
       inputTokens += res.usage?.prompt_tokens ?? 0;
       outputTokens += res.usage?.completion_tokens ?? 0;
       const content = res.choices[0]?.message?.content ?? '';

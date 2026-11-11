@@ -126,14 +126,15 @@ function recommend(c: Classification | null, pr: PriorityAssessment, f: Finding,
   switch (c) {
     case 'overhaul': return { title: 'Redesign the process', steps: ['Map the current process with the roles involved, including handovers and waiting points.', 'Agree a target process and clear ownership.', 'Only consider automation once the redesigned process is stable.'] };
     case 'fix': return { title: 'Correct the existing process or configuration', steps: [systems.length ? `Investigate how ${systems.join(', ')} is set up and used for this work.` : 'Investigate how the existing process is followed.', 'Correct it with the people involved; no new tool is needed.', 'Check the problem has gone after a few weeks.'] };
-    case 'automate': return { title: 'Prepare a solution specification for engineering review', steps: [template ? `Start from the JADA template “${template.name}” (${template.automationType === 'conventional' ? 'conventional automation, no AI' : 'approach to be confirmed'}).` : 'No tested pattern exists: JADA engineering assesses whether and how to automate it.', 'Agree success measures and the human approval points before building.', 'Send to JADA engineering review once approved.'] };
+    case 'automate': return { title: 'Prepare a solution specification for engineering review', steps: [template ? `Start from the JADA template “${template.name}” (${template.automationType === 'conventional' ? 'conventional automation, no AI' : 'approach to be confirmed'}).` : 'No tested pattern exists: JADA engineering assesses whether and how to automate it.', 'Agree success measures and the human approval points before building.', 'Once you approve it, JADA reviews and scopes the build with you.'] };
     case 'keep_human': return { title: 'Keep this with people', steps: ['Record why human judgement and accountability must remain.', 'Look for safe supporting improvements, such as preparing information in advance.'] };
     default: return { title: 'Classify this finding', steps: ['Choose overhaul, fix, automate or keep human in the finding’s “Correct or clarify” section in discovery.', 'Classification comes before prioritisation: an unclassified finding is not ranked.'] };
   }
 }
 
 // The one approval rule, used by individual decisions and by the older bulk endpoint alike (Phase 5, issue A).
-export const approvalBlockers = (o: Pick<OpportunityAssessment, 'gates'>) => o.gates.filter((g) => g.blocksPriority || g.code === 'not_validated');
+// Approval is the firm's confirmation of a finding, so an unconfirmed finding can be approved.
+export const approvalBlockers = (o: Pick<OpportunityAssessment, 'gates'>) => o.gates.filter((g) => g.blocksPriority);
 
 // What JADA receives when an approved opportunity moves to engineering review (also kept as an audit snapshot).
 export function handoverBrief(o: OpportunityAssessment, firmName: string) {

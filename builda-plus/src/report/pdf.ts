@@ -7,7 +7,7 @@ const C = { ink: '#1C2B3A', muted: '#56657A', green: '#2E6B58', line: '#C9D1D9',
 export function renderReportPdf(model: ReportModel, opts: { fontDir?: string; compress?: boolean } = {}): Promise<Buffer> {
   const fontDir = opts.fontDir ?? join(process.cwd(), 'public', 'fonts');
   const doc = new PDFDocument({ size: 'A4', margins: { top: 64, bottom: 72, left: 64, right: 64 }, bufferPages: true, compress: opts.compress ?? true,
-    info: { Title: `Discovery report — ${model.firmName}`, Author: 'builda+ by JADA', Subject: 'Operational discovery report' } });
+    info: { Title: `Discovery report — ${model.firmName}`, Author: 'BuildA+ by JADA', Subject: 'Operational discovery report' } });
   doc.registerFont('serif', join(fontDir, 'SourceSerif4-Regular.ttf'));
   doc.registerFont('serif-bold', join(fontDir, 'SourceSerif4-Semibold.ttf'));
   doc.registerFont('sans', join(fontDir, 'AtkinsonHyperlegible-Regular.ttf'));
@@ -21,6 +21,7 @@ export function renderReportPdf(model: ReportModel, opts: { fontDir?: string; co
   const ensure = (h: number) => { if (doc.y + h > doc.page.height - 80) doc.addPage(); };
   const h1 = (t: string) => { ensure(80); doc.moveDown(1.2).font('serif-bold').fontSize(18).fillColor(C.ink).text(t); doc.moveDown(0.4); };
   const h2 = (t: string) => { ensure(72); doc.moveDown(0.7).font('sans-bold').fontSize(11).fillColor(C.ink).text(t); doc.moveDown(0.2); };
+  const h3 = (t: string) => { ensure(48); doc.moveDown(0.3).font('sans-bold').fontSize(9.5).fillColor(C.muted).text(t); doc.moveDown(0.15); };
   const para = (t: string, color = C.ink) => doc.font('sans').fontSize(10).fillColor(color).text(t, { lineGap: 2.5 });
   const bullets = (items: string[], color = C.ink) => { for (const i of items) { ensure(20); doc.font('sans').fontSize(10).fillColor(color).text(`•  ${i}`, { indent: 0, lineGap: 2.5 }); doc.moveDown(0.15); } };
   const rows = (pairs: { label: string; value: string }[]) => {
@@ -33,6 +34,8 @@ export function renderReportPdf(model: ReportModel, opts: { fontDir?: string; co
       doc.y = Math.max(h1y, doc.y) + 3; doc.x = 64;
     }
   };
+  const numbered = (items: string[]) => { items.forEach((t, i) => { ensure(20); doc.font('sans').fontSize(10).fillColor(C.ink).text(`${i + 1}.  ${t.replace(/^\d+[.)]\s*/, '')}`, { lineGap: 2.5 }); doc.moveDown(0.15); }); };
+  const lead = (t: string) => { ensure(30); doc.font('sans-bold').fontSize(10.5).fillColor(C.ink).text(t, { lineGap: 2.5 }); doc.moveDown(0.3); };
   const quote = (q: { role: string; quote: string }) => {
     ensure(24);
     const y = doc.y;
@@ -43,7 +46,7 @@ export function renderReportPdf(model: ReportModel, opts: { fontDir?: string; co
   };
 
   // ---- cover ----
-  doc.font('sans').fontSize(10).fillColor(C.green).text('builda+ discovery report');
+  doc.font('sans').fontSize(10).fillColor(C.green).text('BuildA+ discovery report');
   doc.moveDown(2.5);
   doc.font('serif-bold').fontSize(30).fillColor(C.ink).text(model.firmName, { lineGap: 2 });
   doc.font('serif').fontSize(16).fillColor(C.muted).text('How work moves through the business, and where to improve it first');
@@ -95,7 +98,28 @@ export function renderReportPdf(model: ReportModel, opts: { fontDir?: string; co
     if (b.evidence.length) { h2('What people said'); b.evidence.forEach(quote); }
     h2('The numbers'); rows(b.figures);
     if (b.unknowns.length) para(`Still unknown: ${b.unknowns.join(', ').toLowerCase()}.`, C.muted);
-    h2('Proposed improvement'); bullets(b.improvement);
+    if (b.plan) {
+      // The concrete plan: what we do, how it works, before and after, the timeline and how we measure it.
+      h2('What we’ll do'); lead(b.plan.headline); bullets(b.plan.whatWeBuild);
+      h2('How it will work'); numbered(b.plan.howItWorks);
+      if (b.plan.staysWithPeople.length) { h2('What stays with your team'); bullets(b.plan.staysWithPeople); }
+      h2('The difference');
+      rows([{ label: 'Today', value: b.plan.before.join(' ') }, { label: 'After the change', value: b.plan.after.join(' ') }]);
+      if (b.plan.build) {
+        // The technical approach in plain words, for the owner and their IT contact.
+        const k = b.plan.build;
+        h2('How we’ll build it');
+        rows([{ label: 'Approach', value: k.approach }, { label: 'Use of AI', value: k.aiRole }]);
+        h3('What we build or set up'); bullets(k.components);
+        h3('How it connects to your systems'); bullets(k.connections);
+        h3('How we test it before it goes live'); bullets(k.testing);
+      }
+      h2(`Timeline: ${b.plan.timeline.headline}`);
+      rows(b.plan.timeline.steps.map((s) => ({ label: s.when, value: s.what })));
+      para(b.plan.timeline.afterwards, C.muted);
+      h2('How we’ll know it worked'); bullets(b.plan.measures);
+      h2('What we need from you'); bullets(b.plan.needFromYou);
+    } else { h2('Proposed improvement'); bullets(b.improvement); }
     rows([{ label: 'Implementation complexity', value: b.complexity }, { label: 'Payback', value: b.payback }]);
     if (b.assumptions.length) { h2('Assumptions'); bullets(b.assumptions, C.muted); }
   });
@@ -115,10 +139,23 @@ export function renderReportPdf(model: ReportModel, opts: { fontDir?: string; co
   bullets(model.crossRole.blindSpots === null ? ['Not available: the firm lead has not completed an interview.'] : model.crossRole.blindSpots.length ? model.crossRole.blindSpots : ['None.']);
   if (model.crossRole.unreportedStages.length) { h2('Stages nobody described'); para(model.crossRole.unreportedStages.join(', ') + '.'); }
 
-  h1('Recommended two-week build');
-  para(model.recommendedBuild.text);
-  if (model.recommendedBuild.blockers.length) { h2('What needs to happen first'); bullets(model.recommendedBuild.blockers); }
-  if (model.recommendedBuild.toConfirm.length) { h2('To confirm in JADA engineering review'); bullets(model.recommendedBuild.toConfirm, C.muted); }
+  if (model.offer) {
+    // The proposition: what JADA builds, by when, and how the firm sees the difference.
+    h1(model.offer.headline);
+    lead(model.offer.lead);
+    for (const it of model.offer.items) {
+      ensure(48);
+      doc.font('sans-bold').fontSize(10).fillColor(C.ink).text(it.title, { lineGap: 2 });
+      rows([{ label: 'What you get', value: it.deliver }, { label: 'When', value: it.when }, { label: 'How we’ll know it worked', value: it.measure }]);
+      doc.moveDown(0.3);
+    }
+    h2('How we work'); bullets(model.offer.conditions);
+  } else {
+    h1('Recommended two-week build');
+    para(model.recommendedBuild.text);
+    if (model.recommendedBuild.blockers.length) { h2('What needs to happen first'); bullets(model.recommendedBuild.blockers); }
+    if (model.recommendedBuild.toConfirm.length) { h2('To confirm in JADA engineering review'); bullets(model.recommendedBuild.toConfirm, C.muted); }
+  }
 
   h1('Points for compliance review');
   for (const r of model.regulatoryItems ?? []) {

@@ -71,7 +71,7 @@ describe('priority: gates come before impact', () => {
     expect(pr({ score: 30 }).band).toBe('Low');
     expect(pr({ decision: 'approved' }).status).toBe('approved');
     expect(pr({ decision: 'rejected' }).rankable).toBe(false);
-    expect(pr({ validated: false }).status).toBe('awaiting_validation');
+    expect(pr({ validated: false }).status).toBe('ready_for_review');   // no separate validation step: approving is the confirmation
     expect(pr({ classification: null })).toMatchObject({ status: 'needs_classification', rankable: false });
     expect(pr({ classification: null, dimensions: dims('insufficient') }).status).toBe('needs_evidence');
   });
@@ -140,7 +140,7 @@ describe.skipIf(!APP || !ADMIN)('opportunity intelligence (Phase 4)', () => {
     await ev('P6', 'lender_portal_logins', 'dip', 'case_manager', 30, 5, 'the lender portal logs me out constantly');
     // 5: nothing about case status updates: it must stay an industry hypothesis.
     const noAuth = { authenticate: async () => null, authenticateJada: async () => null };
-    app = buildApp({ db, firms, analysis, decisions, interviews: {} as any, participants: {} as any, jada: {} as any,
+    app = buildApp({ laterStages: true, db, firms, analysis, decisions, interviews: {} as any, participants: {} as any, jada: {} as any,
       firmAuth: auth, jadaAuth: noAuth, sessionSecret: SECRET, consent: { retentionMonths: 12, jadaContact: 'test' }, secureCookies: false,
       publicDir: join(__dirname, '..', 'public') } as AppDeps);
     expect((await post('/analyse', {})).statusCode).toBe(200);
@@ -154,7 +154,7 @@ describe.skipIf(!APP || !ADMIN)('opportunity intelligence (Phase 4)', () => {
     expect(o.evidence.bySource).toEqual({ employee_reported: 3 });
     expect(o.priorityRank).toBe(1);
     expect(o.band).not.toBeNull();
-    expect(o.status).toBe('awaiting_validation');
+    expect(o.status).toBe('ready_for_review');
     expect(o.recommendedAction.title).toMatch(/specification/i);
     expect(o.assessment.risks.some((r: string) => /^Control:/.test(r))).toBe(true);
     expect(o.assessment.dependencies.some((d: string) => /Outlook/.test(d))).toBe(true);
@@ -250,13 +250,17 @@ describe.skipIf(!APP || !ADMIN)('opportunity intelligence (Phase 4)', () => {
 
   it('10. review decisions are audited; approval leads to an engineering hand-over with the full brief', async () => {
     const o = await opp('document_chasing');
-    expect((await post(`/opportunities/${o.id}/decision`, { decision: 'approved' })).statusCode).toBe(409);   // not yet validated
+    // Approval needs no separate validation (approving IS the confirmation), but the parked engineering
+    // hand-over still refuses an unconfirmed finding.
     expect((await post(`/opportunities/${o.id}/engineering-review`, {})).statusCode).toBe(409);
     await correct(o.id, 'validated', true, 'Confirmed');
     expect((await post(`/opportunities/${o.id}/decision`, { decision: 'rejected' })).statusCode).toBe(400);    // needs a reason
     expect((await post(`/opportunities/${o.id}/decision`, { decision: 'challenged', reason: 'Check the volume with the admin team' })).statusCode).toBe(200);
     expect((await opp('document_chasing')).status).toBe('challenged');
+    const approvedCount = async () => (await app.inject({ method: 'GET', url: '/api/firm/workspace', headers: as(a) })).json().discoveries.find((d: any) => d.id === id).approved;
+    const before = await approvedCount();                                          // a challenge isn't an approval
     expect((await post(`/opportunities/${o.id}/decision`, { decision: 'approved', reason: 'Volume checked' })).statusCode).toBe(200);
+    expect(await approvedCount()).toBe(before + 1);                                // the workspace's "Discovery complete" step counts it
     expect((await opp('document_chasing')).engineering.eligible).toBe(true);
     const h = await post(`/opportunities/${o.id}/engineering-review`, { note: 'Start with remortgages' });
     expect(h.statusCode).toBe(200);

@@ -9,7 +9,7 @@ import { ReviewSchema, type ImplementationPack } from './pack';
 import type { DecisionService } from './service';
 import { APPROACHES_FOR, APPROACH_LABEL, matchTemplates, readiness, SOLUTION_TEMPLATES, type SolutionApproach, type SolutionTemplate } from '../knowledge/solutionTemplates';
 
-// Phase 5: the engineering workflow between builda+ (discovers, assesses, recommends) and JADA (reviews,
+// Phase 5: the engineering workflow between BuildA+ (discovers, assesses, recommends) and JADA (reviews,
 // designs, implements). Built on the existing tables, with no schema change:
 //  - implementation_packs: one row per submission (any classification). `status` holds the workflow status.
 //  - pack_reviews: append-only log of every workflow step (who, when, what), folded into the current state.
@@ -167,7 +167,7 @@ export function suggestedDesign(s: Brief) {
       regulatory: (s.risksAndControls ?? []).filter((r: string) => !r.startsWith('Control: ')),
       technical: [...(t?.knownLimitations ?? []), ...(t ? [] : ['No reference template: custom engineering review required.'])],
     },
-    // builda+'s open questions stay under "what remains uncertain"; decisions are the engineer's to record.
+    // BuildA+'s open questions stay under "what remains uncertain"; decisions are the engineer's to record.
     outstandingDecisions: [] as string[],
   };
 }
@@ -178,7 +178,7 @@ export function suggestedMeasures(s: Brief): z.infer<typeof Measure>[] {
   const src = (k: 'monthlyVolume' | 'minutesPerOccurrence') => { const i = bc?.inputs?.[k]; return i?.source ? `${i.source.replace(/_/g, ' ')}${i.note ? `, ${i.note}` : ''}` : 'not yet measured'; };
   out.push({ name: 'Staff hours a month on this work', valueType: 'time', unit: 'hours / month', baseline: bc?.timeRecovered.monthlyHoursSpent ?? null, baselineSource: bc?.timeRecovered.monthlyHoursSpent != null ? 'Discovery estimate (times a month × minutes each time)' : 'Not yet measured', target: null, direction: 'decrease', measurementSource: 'To agree with the firm', period: 'To agree with the firm' });
   out.push({ name: 'Minutes of staff time each time', valueType: 'time', unit: 'minutes', baseline: bc?.inputs?.minutesPerOccurrence?.value ?? null, baselineSource: src('minutesPerOccurrence'), target: null, direction: 'decrease', measurementSource: 'To agree with the firm', period: 'To agree with the firm' });
-  if (bc?.cashSavings.monthlyGBP != null) out.push({ name: 'Spending reduced', valueType: 'cash', unit: '£ / month', baseline: null, baselineSource: `Firm-stated saving: ${bc.cashSavings.basis ?? 'basis recorded in builda+'}`, target: null, direction: 'increase', measurementSource: 'Firm’s accounts', period: 'To agree with the firm' });
+  if (bc?.cashSavings.monthlyGBP != null) out.push({ name: 'Spending reduced', valueType: 'cash', unit: '£ / month', baseline: null, baselineSource: `Firm-stated saving: ${bc.cashSavings.basis ?? 'basis recorded in BuildA+'}`, target: null, direction: 'increase', measurementSource: 'Firm’s accounts', period: 'To agree with the firm' });
   if (bc?.capacity.additionalCasesPerMonth != null) out.push({ name: 'Cases handled a month', valueType: 'capacity', unit: 'cases / month', baseline: null, baselineSource: 'Not yet measured', target: null, direction: 'increase', measurementSource: 'Firm’s case system', period: 'To agree with the firm' });
   return out;
 }
@@ -391,7 +391,7 @@ export class EngineeringService {
     const allowed = (Object.keys(ACTIONS) as EngineeringAction[]).filter((a) => ACTIONS[a].by === viewer && (ACTIONS[a].from as readonly string[]).includes(status));
     const who = (e: EventRow) => (e.reviewer_id === userId ? 'You' : e.result?.by === 'firm' ? (viewer === 'firm' ? 'Your firm' : 'The firm') : viewer === 'firm' ? 'JADA engineering' : 'Another JADA engineer');
     return {
-      needsReassessment: row.content?.schemaVersion === 2 ? null : 'Submitted before the full assessment existed: priority, business case and firm validation detail were not recorded. Reassess against the current opportunity in builda+ before approving.',
+      needsReassessment: row.content?.schemaVersion === 2 ? null : 'Submitted before the full assessment existed: priority, business case and firm validation detail were not recorded. Reassess against the current opportunity in BuildA+ before approving.',
       id: row.id, discoveryId: row.discovery_id, opportunityId: row.pain_point_id, firmName: firm, status, group: groupOf(status), submittedAt: row.created_at, updatedAt: row.updated_at,
       submission: { ...s, firmName: firm }, pack: viewer === 'jada' ? packOf(row.content) : null,
       templates: matchTemplates({ key: s.key, classification: s.classification, systems: s.systems ?? [] }),

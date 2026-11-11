@@ -20,10 +20,20 @@ const REASONS = { client_information: 'Client information typed', complaint_or_c
   advice_request: 'Asked for mortgage advice', out_of_scope: 'Outside scope', firm_lead_requested: 'Firm lead asked for help', insufficient_evidence: 'Not enough evidence' };
 
 async function listView() {
-  const [{ discoveries }, { queue }] = await Promise.all([api('/api/jada/discoveries'), api('/api/jada/queue').catch(() => ({ queue: [] }))]);
+  const [{ discoveries }, { queue }, { requests }] = await Promise.all([api('/api/jada/discoveries'), api('/api/jada/queue').catch(() => ({ queue: [] })),
+    api('/api/jada/demo-requests').catch(() => ({ requests: [] }))]);
   const out = el('p', { class: 'status', role: 'status' });
+  const ROLE_LABEL = { owner_director: 'Owner or director', operations: 'Operations', adviser: 'Adviser', compliance: 'Compliance', other: 'Other' };
+  const when = (iso) => new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
   root.replaceChildren(
     el('h1', {}, 'JADA work'),
+    el('p', {}, el('a', { href: '/jada/admin' }, 'Admin: firms and the demo firm →')),
+    el('h2', {}, 'Demo requests'),
+    requests.length === 0 ? el('p', { class: 'muted' }, 'No demo requests yet. They arrive here from “Book a demo” on the website.') :
+      el('ul', { class: 'list-plain' }, ...requests.map((r) => el('li', {},
+        el('strong', {}, r.firmName), ' ', el('span', { class: 'muted' }, `${r.firmSize} people · ${when(r.createdAt)}`), el('br'),
+        `${r.name} (${ROLE_LABEL[r.role] || r.role}) · `, el('a', { href: `mailto:${r.email}` }, r.email),
+        r.message ? el('p', { class: 'muted' }, r.message) : null))),
     el('h2', {}, 'Waiting for an engineer'),
     queue.length === 0 ? el('p', { class: 'muted' }, 'Nothing waiting. Firms appear here when they approve priorities or ask for help.') :
       el('ul', { class: 'list-plain' }, ...queue.map((q) => el('li', {}, el('strong', {}, q.firmName), ' ', el('span', { class: 'muted' }, q.reason), ' ',

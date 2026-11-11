@@ -46,6 +46,8 @@ export function assessPriority(i: PriorityInput): PriorityAssessment {
   if (i.requiresComplianceReview && i.classification && i.classification !== 'keep_human') gate('compliance_review', 'Involves regulated judgement: compliance review first', true);
   if (i.disputedEvidence > 0) gate('disputed_evidence', 'Some evidence is disputed', false, false);
   if (i.missingMeasurements.length) gate('missing_measurements', 'Volume or time not yet given: value can’t be estimated', false, false);
+  // No separate validation step: approving an opportunity is how the firm confirms its finding. Unconfirmed
+  // findings still can't go to the (parked) engineering hand-over.
   if (!i.validated) gate('not_validated', 'Not yet confirmed by the firm', false, true);
 
   const blocked = gates.some((g) => g.blocksPriority);
@@ -58,7 +60,7 @@ export function assessPriority(i: PriorityInput): PriorityAssessment {
   else if (i.decision === 'approved') status = 'approved';
   else if (i.decision === 'rejected') status = 'rejected';
   else if (i.decision === 'challenged') status = 'challenged';
-  else status = i.validated ? 'ready_for_review' : 'awaiting_validation';
+  else status = 'ready_for_review';
 
   const rankable = !blocked && i.score !== null && status !== 'rejected';
   const b = i.breakdown;

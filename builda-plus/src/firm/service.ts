@@ -160,10 +160,13 @@ export class FirmService {
                 (select count(*)::int from interview_sessions s where s.discovery_id = d.id and s.kind = 'main' and s.status = 'completed') as completed,
                 (select count(*)::int from interview_sessions s where s.discovery_id = d.id and s.kind = 'main' and s.status in ('in_progress','paused')) as in_progress,
                 (select count(*)::int from evidence_records e where e.discovery_id = d.id) as evidence,
-                (select count(*)::int from pain_points pp where pp.discovery_id = d.id) as pain_points,
-                (select count(*)::int from pain_points pp where pp.discovery_id = d.id and not pp.validated_by_firm_lead) as awaiting_validation,
+                (select count(*)::int from pain_points pp where pp.discovery_id = d.id and not coalesce((pp.evidence_summary->>'retired')::boolean, false)) as pain_points,
+                (select count(*)::int from pain_points pp where pp.discovery_id = d.id and not pp.validated_by_firm_lead and not coalesce((pp.evidence_summary->>'retired')::boolean, false)) as awaiting_validation,
                 (select count(*)::int from opportunities o where o.discovery_id = d.id and o.rank is not null) as ranked,
                 (select count(*)::int from implementation_packs ip where ip.discovery_id = d.id) as packs,
+                (select count(*)::int from (select distinct on (c.entity_id) c.new_value->>'decision' as decision from corrections c
+                   where c.discovery_id = d.id and c.field = 'opportunity_decision' order by c.entity_id, c.created_at desc, c.id desc) latest
+                  where latest.decision in ('approved', 'sent_to_engineering')) as approved,
                 (select max(created_at) from analysis_runs a where a.discovery_id = d.id) as analysed_at,
                 (select max(created_at) from reports r where r.discovery_id = d.id) as reported_at,
                 greatest(d.created_at, (select max(created_at) from audit_log l where l.discovery_id = d.id)) as updated_at
@@ -178,7 +181,7 @@ export class FirmService {
         discoveries: d.rows.map((x) => ({
           id: x.id, status: x.status, createdAt: x.created_at, updatedAt: x.updated_at, hasProfile: x.has_profile,
           people: x.people, completed: x.completed, inProgress: x.in_progress, evidence: x.evidence, painPoints: x.pain_points,
-          awaitingValidation: x.awaiting_validation, ranked: x.ranked, packs: x.packs, analysedAt: x.analysed_at, reportedAt: x.reported_at,
+          awaitingValidation: x.awaiting_validation, ranked: x.ranked, packs: x.packs, approved: x.approved, analysedAt: x.analysed_at, reportedAt: x.reported_at,
         })),
         profile: latest.rows[0] ? { discoveryId: latest.rows[0].id as string, value: parsed?.success ? parsed.data : null } : null,
         activity: activity.rows.map((a) => ({ action: a.action, entityType: a.entity_type, discoveryId: a.discovery_id, actorKind: a.actor_kind, at: a.created_at })),

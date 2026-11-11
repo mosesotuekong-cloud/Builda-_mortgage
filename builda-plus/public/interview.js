@@ -62,19 +62,24 @@ function renderInterview(firmName, session) {
     e.preventDefault();
     const text = textarea.value.trim();
     if (!text) { textarea.focus(); return; }
-    send.disabled = true; textarea.disabled = true;
+    // The answer moves into the conversation straight away and the box clears, like any chat.
+    // If sending fails, the answer goes back into the box so nothing has to be retyped.
+    conversation.querySelectorAll('.notice').forEach((n) => n.remove());
+    send.disabled = true; textarea.disabled = true; textarea.value = '';
     addMessage('user', text);
-    const thinking = el('p', { class: 'thinking' }, 'Thinking about your answer…');
+    const mine = conversation.lastChild;
+    const thinking = el('p', { class: 'thinking', role: 'status' }, 'Thinking about your answer…');
     conversation.append(thinking);
+    conversation.scrollTop = conversation.scrollHeight;
     let finished = false;
     try {
       const s = await api('/api/interview/message', { text });
-      textarea.value = '';
       thinking.remove(); addMessage('assistant', s.reply); renderStages(s.stages);
       finished = s.status === 'completed' || s.status === 'escalated';
       closeIfFinished(s);
     } catch (err) {
-      thinking.remove(); conversation.lastChild.remove();          // keep their text in the box to resend
+      thinking.remove(); mine.remove();
+      if (!textarea.value) textarea.value = text;                     // put their answer back to resend
       conversation.append(el('p', { class: 'notice', role: 'alert' }, err.message));
       conversation.scrollTop = conversation.scrollHeight;
     }

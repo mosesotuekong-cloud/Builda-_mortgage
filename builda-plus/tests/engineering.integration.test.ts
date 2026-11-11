@@ -49,7 +49,7 @@ describe('solution templates and outcome evaluation', () => {
     expect(evaluateOutcome(m, [{ measure: 'Hours', value: 30, measuredAt: '2026-12-01', source: 'pulse', note: '' }]).overall).toBe('not_met');
     expect(evaluateOutcome([{ ...m[0], target: null }], [{ measure: 'Hours', value: 18, measuredAt: '2026-12-01', source: 'pulse', note: '' }]).overall).toBe('no_agreed_targets');
   });
-  it('builda+ contains no Microsoft Graph client: the Outlook integration cannot be reached from here', () => {
+  it('BuildA+ contains no Microsoft Graph client: the Outlook integration cannot be reached from here', () => {
     const files: string[] = [];
     const walk = (d: string) => { for (const f of readdirSync(d)) { const p = join(d, f); statSync(p).isDirectory() ? walk(p) : files.push(p); } };
     walk(join(__dirname, '..', 'src'));
@@ -132,7 +132,7 @@ describe.skipIf(!APP || !ADMIN)('engineering workflow (Phase 5)', () => {
     for (const u of [engineer, outsider]) await admin.query("insert into jada_staff_roles (user_id, role) values ($1, 'engineer')", [u]);
     await admin.query("insert into jada_staff_roles (user_id, role) values ($1, 'knowledge_editor')", [editor]);
     const noAuth = auth;
-    app = buildApp({ db, firms, analysis, decisions, interviews: {} as any, participants: {} as any, jada: new JadaService(db),
+    app = buildApp({ laterStages: true, db, firms, analysis, decisions, interviews: {} as any, participants: {} as any, jada: new JadaService(db),
       firmAuth: auth, jadaAuth: noAuth, sessionSecret: SECRET, consent: { retentionMonths: 12, jadaContact: 'test' }, secureCookies: false,
       publicDir: join(__dirname, '..', 'public') } as AppDeps);
     expect((await post(`/api/firm/discoveries/${id}/analyse`, {})).statusCode).toBe(200);
@@ -141,10 +141,8 @@ describe.skipIf(!APP || !ADMIN)('engineering workflow (Phase 5)', () => {
 
   it('12. bulk approval cannot bypass the gates: same rules as one decision, all-or-nothing', async () => {
     const docs = await oppId('document_chasing'), regulated = await oppId('fact_find_rekeying');
-    let r = await post(`/api/firm/discoveries/${id}/approve`, { priorities: [docs], proceedWith: null });
-    expect(r.statusCode).toBe(409);                                         // not validated
-    await validate(docs); await validate(regulated);
-    r = await post(`/api/firm/discoveries/${id}/approve`, { priorities: [docs, regulated], proceedWith: null });
+    // Approval is the confirmation (no separate validation step), but every other gate still applies.
+    let r = await post(`/api/firm/discoveries/${id}/approve`, { priorities: [docs, regulated], proceedWith: null });
     expect(r.statusCode).toBe(409);
     expect(r.json().error).toMatch(/Nothing was approved.*compliance review/);
     expect((await opps()).find((o) => o.id === docs).decision.latest).toBeNull();      // all-or-nothing

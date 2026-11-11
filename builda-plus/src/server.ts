@@ -13,6 +13,10 @@ import { assertConsentConfigReady } from './participant/consent';
 import { DecisionService, JadaService } from './implementation/service';
 import { KnowledgeService } from './knowledge/service';
 import { SigninService } from './http/signin';
+import { BrevoMailer } from './firm/mailer';
+import { MORTGAGE_PACK } from './understanding/packs/mortgage';
+import pg from 'pg';
+import { AdminService } from './admin/service';
 
 const env = (k: string, fallback?: string) => {
   const v = process.env[k] ?? fallback;
@@ -29,16 +33,41 @@ const consent = {
 };
 assertConsentConfigReady({ ...consent, firmName: '' });
 
-// builda+ still uses the demo sign-in (pick any account, no password). That's fine on this computer,
-// but anywhere else it must sit behind the private-demo password. Refuse to start otherwise.
-const accessPassword = process.env.DEMO_ACCESS_PASSWORD?.trim() || null;
+// BuildA+ uses the push-button sign-in (choose an account). Whoever hosts it sets SIGNIN_PASSWORD, and the
+// sign-in page asks for it before showing any account. Required anywhere but this computer.
+// (DEMO_ACCESS_PASSWORD, the older site-wide password, is still read so existing deployments keep working.)
+const signinPassword = (process.env.SIGNIN_PASSWORD ?? process.env.DEMO_ACCESS_PASSWORD)?.trim() || null;
 const onThisComputer = ['localhost', '127.0.0.1', '[::1]'].includes(new URL(appBaseUrl).hostname);
-if (!onThisComputer && !accessPassword) {
-  throw new Error(`APP_BASE_URL is ${appBaseUrl}, which isn't this computer. builda+ still uses the demo sign-in, so set DEMO_ACCESS_PASSWORD (at least 12 characters) before putting it online.`);
+if (!onThisComputer && !signinPassword) {
+  throw new Error(`APP_BASE_URL is ${appBaseUrl}, which isn't this computer. Set SIGNIN_PASSWORD (at least 12 characters) so only people you give it to can sign in.`);
 }
-if (accessPassword && accessPassword.length < 12) throw new Error('DEMO_ACCESS_PASSWORD must be at least 12 characters.');
+if (signinPassword && signinPassword.length < 12) throw new Error('SIGNIN_PASSWORD must be at least 12 characters.');
+
+// "Book a demo" requests are emailed to the JADA team through Brevo (brevo.com) when BREVO_API_KEY and
+// DEMO_REQUEST_FROM (a sender verified in Brevo) are both set. Otherwise they're only in the JADA console.
+const DEMO_REQUEST_TO = (process.env.DEMO_REQUEST_TO || 'moses.otuekong@jadasquad.com,azeez@jadasquad.com').split(',').map((x) => x.trim()).filter(Boolean);
+const brevoKey = process.env.BREVO_API_KEY?.trim(), demoFrom = process.env.DEMO_REQUEST_FROM?.trim();
+const demoNotify = brevoKey && demoFrom ? { mailer: new BrevoMailer(brevoKey, demoFrom), to: DEMO_REQUEST_TO } : undefined;
+if (!demoNotify) console.log(brevoKey ? 'Demo requests: BREVO_API_KEY is set but DEMO_REQUEST_FROM isn’t, so no email is sent. Set it to a sender verified in Brevo.'
+  : 'Demo requests: no BREVO_API_KEY, so they are saved and shown in the JADA console only (no email).');
+else console.log(`Demo requests: emailed to ${DEMO_REQUEST_TO.join(', ')} through Brevo.`);
+
+// Which interviewer runs main interviews: 'knowledge' (the default: builds a connected understanding and
+// plans each question from it) or 'classic' (stage by stage). Follow-ups and the analysis are the same.
+const requestedEngine = (process.env.INTERVIEW_ENGINE || 'knowledge').trim();
+if (!['knowledge', 'classic'].includes(requestedEngine)) throw new Error('INTERVIEW_ENGINE must be "knowledge" or "classic".');
 
 const db = createPool();
+// The knowledge engine needs migration 008. If it hasn't been run, fall back rather than fail every interview.
+let interviewEngine = requestedEngine;
+if (interviewEngine === 'knowledge') {
+  const r = await db.query(`select to_regclass('public.kn_claims') is not null as ready`).catch(() => ({ rows: [{ ready: false }] }));
+  if (!r.rows[0]?.ready) {
+    interviewEngine = 'classic';
+    console.warn('Interviews: the knowledge engine needs migration 008 (run "npm run migrate"). Using the classic engine until then.');
+  }
+}
+console.log(`Interviews: ${interviewEngine} engine.`);
 // No email for now: the firm lead copies each person's link and shares it themselves.
 const mailer = null;
 const model = new OpenAIProvider();
@@ -51,23 +80,33 @@ const knowledge = new KnowledgeService(db, { allowUnreviewedSeed: process.env.NO
 const playbookFor = knowledge.forDiscovery;
 const firms = new FirmService(db, mailer, { appBaseUrl, invitationDays: 30, playbookVersion: SEED_PLAYBOOK.version, currentPlaybookVersion: () => knowledge.currentVersion() });
 const analysis = new AnalysisService(db, { providerFor, playbook: SEED_PLAYBOOK, playbookFor, mailer, appBaseUrl });
+// The JADA admin page uses the administrator connection: never in production.
+const adminUrl = process.env.DATABASE_ADMIN_URL?.trim();
+const admin = adminUrl && process.env.NODE_ENV !== 'production'
+  ? new AdminService(db, new pg.Pool({ connectionString: adminUrl, max: 2 }), { appBaseUrl, llmFor: providerFor }) : undefined;
+console.log(admin ? 'JADA admin page: on (/jada/admin).' : 'JADA admin page: off (needs DATABASE_ADMIN_URL, and never in production).');
 const devAuth = new DevCookieAuth(sessionSecret); // replace with Builda's auth and JADA's SSO adapters
 const app = buildApp({
   db, firms, analysis,
-  interviews: new InterviewService(db, { providerFor, playbook: SEED_PLAYBOOK, playbookFor }),
+  interviews: new InterviewService(db, { providerFor, playbook: SEED_PLAYBOOK, playbookFor, ...(interviewEngine === 'knowledge' ? { knowledge: { pack: MORTGAGE_PACK } } : {}) }),
   knowledge,
   signin: new SigninService(db, firms),
   guide: { llm: model },
   participants: new ParticipantAccessService(db),
-  decisions: new DecisionService(db, { analysis, firms, playbook: SEED_PLAYBOOK }),
+  decisions: new DecisionService(db, { analysis, firms, playbook: SEED_PLAYBOOK, llmFor: providerFor }),
   jada: new JadaService(db),
   firmAuth: devAuth,
   jadaAuth: devAuth,
   sessionSecret,
   consent,
   secureCookies: appBaseUrl.startsWith('https://'),
-  ...(accessPassword ? { accessGate: { password: accessPassword } } : {}),
+  ...(signinPassword ? { signinPassword } : {}),
+  trustProxy: !onThisComputer,
+  ...(demoNotify ? { demoNotify } : {}),
+  // Engineering, implementation, impact and the knowledge editor are parked. LATER_STAGES=on brings them back.
+  laterStages: process.env.LATER_STAGES === 'on',
+  ...(admin ? { admin } : {}),
 });
 
 const port = Number(env('PORT', '3000'));
-app.listen({ port, host: '0.0.0.0' }).then(() => console.log(`builda+ listening on ${appBaseUrl}`));
+app.listen({ port, host: '0.0.0.0' }).then(() => console.log(`BuildA+ listening on ${appBaseUrl}`));

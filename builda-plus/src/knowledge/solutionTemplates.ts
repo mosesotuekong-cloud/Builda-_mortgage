@@ -52,13 +52,13 @@ export interface SolutionTemplate {
   specRef: string | null;
 }
 
-// The Outlook spike's go/no-go (docs/engineering/outlook-spike-checklist.md). Changed only when the spike
-// evidence is signed off; nothing in builda+ connects to Microsoft Graph either way.
+// The Outlook spike's go/no-go (docs/archive/engineering/outlook-spike-checklist.md). Changed only when the spike
+// evidence is signed off; nothing in BuildA+ connects to Microsoft Graph either way.
 export const OUTLOOK_SPIKE_GATE: IntegrationGate = {
   id: 'outlook_spike_rev2_1',
   description: 'Microsoft 365 test-tenant spike: critical tests T1–T5, T7, T8, T11, T12, T17, T19, T22, T26–T31, T33 must pass, with evidence signed off.',
   status: 'not_run',
-  evidenceRef: 'docs/engineering/outlook-spike-checklist.md',
+  evidenceRef: 'docs/archive/engineering/outlook-spike-checklist.md',
   blocks: 'Any connection to a firm’s Microsoft 365 tenant: the real Graph transport, onboarding scripts and pilot mailboxes.',
 };
 
@@ -132,7 +132,7 @@ export const SOLUTION_TEMPLATES: SolutionTemplate[] = [
     complexity: { estimate: 'medium', validated: false, basis: 'Specification §11 estimate (about 3½–4½ weeks to tested, one engineer); not yet delivered' },
     durationEstimate: { text: 'About 3½–4½ weeks to tested, then two weeks per firm from access', validated: false, basis: 'Specification §11; not validated by a delivered implementation' },
     approval: { status: 'reviewed', by: 'Decision record A1–A6', on: '2026-11-06', note: 'Specification revision 2.1 approved; A1 conditional on Microsoft Graph testing.' },
-    validation: 'untested', integrationGate: OUTLOOK_SPIKE_GATE, specRef: 'docs/engineering/outlook-follow-up-drafts-spec.md (revision 2.1)',
+    validation: 'untested', integrationGate: OUTLOOK_SPIKE_GATE, specRef: 'docs/archive/engineering/outlook-follow-up-drafts-spec.md (revision 2.1)',
   },
 ];
 

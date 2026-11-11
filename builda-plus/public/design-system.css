@@ -1,4 +1,4 @@
-/* builda+ design system — tokens and components shared by the landing page and application screens.
+/* BuildA+ design system — tokens and components shared by the landing page and application screens.
    Prefix: every token is --ds-*, every class is .ds-*. This keeps it independent of the existing app.css,
    so existing screens are untouched until they are migrated deliberately.
    No inline styles are needed anywhere (the app's Content-Security-Policy forbids them). */
@@ -36,6 +36,11 @@
   --ds-blue-700: #275B8C;
   --ds-blue-100: #E3EDF7;
   --ds-white: #FFFFFF;
+  /* burnt orange: the third brand colour, used sparingly to make things pop */
+  --ds-ember-700: #A8380A;
+  --ds-ember-600: #C2470F;
+  --ds-ember-400: #F07A3C;
+  --ds-ember-100: #FCEADF;
 
   /* semantic */
   --ds-bg: var(--ds-warm-50);
@@ -59,6 +64,10 @@
   --ds-accent-contrast: var(--ds-white);
   --ds-accent-soft: var(--ds-green-100);
   --ds-accent-text: var(--ds-green-700);
+  --ds-pop: var(--ds-ember-600);
+  --ds-pop-hover: var(--ds-ember-700);
+  --ds-pop-contrast: var(--ds-white);
+  --ds-pop-soft: var(--ds-ember-100);
   --ds-focus: #2F7A5E;
   --ds-info: var(--ds-blue-700);
   --ds-info-soft: var(--ds-blue-100);
@@ -146,6 +155,10 @@
     --ds-accent-contrast: #0B1F18;
     --ds-accent-soft: #183329;
     --ds-accent-text: #8FCBB2;
+    --ds-pop: #F07A3C;
+    --ds-pop-hover: #F59460;
+    --ds-pop-contrast: #1F0D03;
+    --ds-pop-soft: #3A1E0F;
     --ds-focus: #8FCBB2;
     --ds-info: #8DB8E2;
     --ds-info-soft: #172B40;
@@ -215,6 +228,8 @@
 .ds-btn--primary:hover { background: var(--ds-brand-hover); color: var(--ds-brand-contrast); }
 .ds-btn--accent { background: var(--ds-accent); color: var(--ds-accent-contrast); box-shadow: var(--ds-shadow-sm); }
 .ds-btn--accent:hover { background: var(--ds-accent-hover); color: var(--ds-accent-contrast); }
+.ds-btn--pop { background: var(--ds-pop); color: var(--ds-pop-contrast); box-shadow: var(--ds-shadow-sm); }
+.ds-btn--pop:hover { background: var(--ds-pop-hover); color: var(--ds-pop-contrast); }
 .ds-btn--secondary { background: var(--ds-surface); color: var(--ds-text-strong); border-color: var(--ds-border-strong); }
 .ds-btn--secondary:hover { border-color: var(--ds-text-subtle); color: var(--ds-text-strong); }
 .ds-btn--ghost { background: transparent; color: var(--ds-text-strong); }

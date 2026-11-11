@@ -1,5 +1,9 @@
 # builda+ — milestones 1–10: discovery, knowledge base, report and JADA handover
 
+> **Current focus (Nov 2026): sell the discovery itself.** The product ends at the opportunities and the
+> PDF report. Engineering, implementation, impact and the knowledge editor are parked behind
+> `LATER_STAGES=on` (off by default; nothing deleted, still tested). See `docs/README.md`.
+
 Discovery core for UK mortgage firms: role-based AI interviews, verified evidence,
 deterministic scoring. Runs on OpenAI today behind a provider interface, so the
 model vendor can be swapped without touching the product logic.
@@ -217,10 +221,10 @@ Code: `src/implementation/engineering.ts`, `src/knowledge/solutionTemplates.ts`,
 - **Outlook:** the rev 2.1 design is a reviewed template gated on the spike (`OUTLOOK_SPIKE_GATE`,
   status `not_run`). Implementation may start (Microsoft-independent build), but activating live access
   and completing are refused until the gate passes. builda+ contains no Microsoft Graph client (tested).
-- Scoring review: `docs/engineering/scoring-review.md`.
+- Scoring review: `docs/archive/engineering/scoring-review.md`.
 
 ## Integration and pilot readiness (Phase 6)
-Full findings, the readiness assessment and the recommended pilot scope: `docs/pilot-readiness-report.md`.
+Full findings, the readiness assessment and the recommended pilot scope: `docs/archive/pilot-readiness-report.md`.
 In short: the demonstration journey works end to end and isolation is verified, but production sign-in,
 database-function identity, retention/deletion and approved knowledge are open gates. Older `/firm` pages
 now redirect to the workspace; engineering routes require the `engineer` role; pick-up only accepts

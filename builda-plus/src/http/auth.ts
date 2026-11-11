@@ -1,7 +1,7 @@
 import type { FastifyRequest } from 'fastify';
 import { signParticipant, verifyParticipant } from './tokens';
 
-// Firm-lead authentication is pluggable so builda+ can use Builda's existing auth.
+// Firm-lead authentication is pluggable so BuildA+ can use Builda's existing auth.
 // Implement FirmLeadAuth against Builda's session/JWT and pass it to buildApp().
 export interface FirmLeadIdentity { userId: string; orgId: string }
 export interface FirmLeadAuth { authenticate(req: FastifyRequest): Promise<FirmLeadIdentity | null> }

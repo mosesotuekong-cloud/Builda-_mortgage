@@ -4,6 +4,7 @@ import type { Playback } from '../analysis/service';
 import { templateFor } from '../knowledge/templates';
 import type { Playbook } from '../knowledge/playbook';
 import { checksFor } from '../knowledge/model';
+import { COMPLEXITY_BY_KIND, type SolutionPlan } from './plans';
 
 // Firm discovery report (brief §12.1). Assembled by code from stored findings — no AI.
 export const CLASS_LABEL: Record<Classification, string> = { overhaul: 'Overhaul the process', fix: 'Fix without automation', automate: 'Automate with human approval', keep_human: 'Keep with people' };
@@ -16,7 +17,11 @@ export interface BusinessCase {
   figures: { label: string; value: string }[];
   improvement: string[]; complexity: string; assumptions: string[]; payback: string; unknowns: string[];
   requiresComplianceReview: boolean;
+  plan?: SolutionPlan;            // the concrete plan: what we build, how, before/after, timeline
 }
+
+// The market proposition: what JADA builds, by when, and how the firm will see the difference.
+export interface Offer { headline: string; lead: string; items: { title: string; deliver: string; when: string; measure: string }[]; conditions: string[] }
 
 export interface ReportModel {
   firmName: string; discoveryId: string; generatedAt: string; version: number;
@@ -29,6 +34,7 @@ export interface ReportModel {
   otherFindings: { title: string; stage: string; approach: string; confidence: string; note: string }[];
   crossRole: { agreements: string[]; differences: { title: string; detail: string }[]; blindSpots: string[] | null; unreportedStages: string[] };
   recommendedBuild: { title: string | null; status: 'provisional' | 'blocked' | 'none'; text: string; blockers: string[]; toConfirm: string[] };
+  offer?: Offer;
   regulatoryReview: string[];
   regulatoryItems: { title: string; stage: string; checks: { title: string; requiredAction: string; citations: string[] }[]; notCovered: boolean }[];
   knowledge: { version: string; reviewed: boolean };
@@ -38,7 +44,7 @@ export interface ReportModel {
   disclaimers: string[];
 }
 
-export function buildReportModel(p: { playback: Playback; profile: FirmProfile | null; firmName: string; discoveryId: string; version: number; now?: Date; playbook?: Playbook }): ReportModel {
+export function buildReportModel(p: { playback: Playback; profile: FirmProfile | null; firmName: string; discoveryId: string; version: number; now?: Date; playbook?: Playbook; plans?: Map<string, SolutionPlan> }): ReportModel {
   const { playback: pb, profile } = p;
   const byId = new Map(pb.painPoints.map((x) => [x.id, x]));
   const top = pb.topThree.map((id) => byId.get(id)!).filter(Boolean);
@@ -65,7 +71,8 @@ export function buildReportModel(p: { playback: Playback; profile: FirmProfile |
         { label: 'Value of recovered capacity per month', value: value === null ? 'Unknown' : `£${value.toLocaleString('en-GB')}` },
       ],
       improvement: x.improvements.length ? x.improvements : [x.classification ? CLASS_LABEL[x.classification] : 'To be agreed'],
-      complexity: template ? `${template.typicalComplexity[0]!.toUpperCase()}${template.typicalComplexity.slice(1)} — based on the JADA template “${template.name}”` : 'Not yet assessed',
+      complexity: template ? `${template.typicalComplexity[0]!.toUpperCase()}${template.typicalComplexity.slice(1)} — based on the JADA template “${template.name}”`
+        : (p.plans?.get(x.id) && x.classification && COMPLEXITY_BY_KIND[x.classification as Classification]) || 'Not yet assessed',
       assumptions: x.assumptions,
       // Phase 4: the business case's own reason; unchanged default when it hasn't been worked out.
       payback: x.impact?.businessCase?.payback?.months != null ? `${x.impact.businessCase.payback.months} months — ${x.impact.businessCase.payback.reason}`
@@ -74,8 +81,22 @@ export function buildReportModel(p: { playback: Playback; profile: FirmProfile |
           : 'Not calculated — implementation cost is not yet known.',
       unknowns: x.impact?.unknowns ?? [],
       requiresComplianceReview: x.requiresComplianceReview,
+      ...(p.plans?.get(x.id) ? { plan: p.plans.get(x.id)! } : {}),
     };
   });
+
+  const planned = businessCases.filter((b) => b.plan);
+  const first = planned.find((b) => /automate/i.test(b.approach)) ?? planned[0];
+  const offer: Offer | undefined = first ? {
+    headline: 'What JADA will build for you',
+    lead: `Start with “${first.title.replace(/\.$/, '')}”: ${first.plan!.timeline.headline.charAt(0).toLowerCase()}${first.plan!.timeline.headline.slice(1)}. ${first.plan!.headline}`,
+    items: planned.map((b) => ({ title: b.title, deliver: b.plan!.headline, when: b.plan!.timeline.headline, measure: b.plan!.measures[0] ?? 'Measured before and after' })),
+    conditions: [
+      'A 30-minute scoping call first, to confirm access to your systems and the sample cases we test with.',
+      'Nothing reaches a client without your team’s approval, and regulated advice always stays with your advisers.',
+      'We measure before and after, so you see the difference in your own figures.',
+    ],
+  } : undefined;
 
   const candidate = top.find((x) => x.classification === 'automate') ?? null;
   const recommendedBuild: ReportModel['recommendedBuild'] = !candidate
@@ -156,6 +177,7 @@ export function buildReportModel(p: { playback: Playback; profile: FirmProfile |
       'Protection advice is a separate advised sale and is not automated.',
     ],
     regulatoryItems,
+    ...(offer ? { offer } : {}),
     knowledge: { version: kb.version, reviewed: kb.reviewed === true },
     sourcesCited,
     outstandingQuestions: [...new Set(pb.painPoints.flatMap((x) => x.outstandingQuestions))].slice(0, 15),

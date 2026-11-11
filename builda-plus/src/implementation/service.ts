@@ -6,6 +6,9 @@ import type { FirmService } from '../firm/service';
 import type { Playbook } from '../knowledge/playbook';
 import { TEMPLATES, type AutomationTemplate } from '../knowledge/templates';
 import { buildReportModel, type ReportModel } from '../report/model';
+import { playbookPlan, systemsInPlan, timelineFor, writePlan, type PlanInput, type SolutionPlan } from '../report/plans';
+import { STAGES, type StageId } from '../domain/journey';
+import type { LLMProvider } from '../llm/provider';
 import { approvalBlockers, briefToMarkdown } from '../analysis/opportunityAssessment';
 import { packOf, submissionOf } from './engineering';
 import { assessReview, buildImplementationPack, packToMarkdown, PackNotPossibleError, ReviewSchema, type ImplementationPack } from './pack';
@@ -19,7 +22,9 @@ export const ApprovalSchema = z.object({
 });
 
 export class DecisionService {
-  constructor(private db: Db, private deps: { analysis: AnalysisService; firms: FirmService; playbook: Playbook; templates?: AutomationTemplate[] }) {}
+  constructor(private db: Db, private deps: { analysis: AnalysisService; firms: FirmService; playbook: Playbook; templates?: AutomationTemplate[];
+    // Writes each top opportunity's concrete plan. Without it (tests), plans come from the playbook.
+    llmFor?: (ctx: { orgId: string; discoveryId: string }) => LLMProvider }) {}
 
   private async firmName(ctx: FirmContext): Promise<string> {
     return withFirmContext(this.db, ctx, async (tx) => (await tx.query('select name from organisations where id = $1', [ctx.orgId])).rows[0]?.name ?? 'Your firm');
@@ -32,10 +37,27 @@ export class DecisionService {
     const profile = await this.deps.firms.getProfile(ctx, discoveryId);
     const firmName = await this.firmName(ctx);
     const playbook = await this.deps.analysis.playbookFor(ctx, discoveryId);
+    // Concrete plans for the top opportunities, written before the transaction (AI calls take seconds).
+    const systems = profile?.technology?.length ? profile.technology.map((t) => t.name) : profile?.systems ?? [];
+    const plans = new Map<string, SolutionPlan>();
+    const llm = this.deps.llmFor?.({ orgId: ctx.orgId, discoveryId });
+    await Promise.all(playback.topThree.map(async (id) => {
+      const x = playback.painPoints.find((p) => p.id === id);
+      if (!x || !timelineFor(x.classification, systems)) return;
+      const input: PlanInput = {
+        title: x.title, stage: x.stageName, classification: x.classification, regulated: !!STAGES[x.stageId as StageId]?.regulatedJudgement,
+        roles: x.roles, causes: x.causes, improvements: x.improvements, quotes: x.quotes,
+        monthlyVolume: x.overrides.monthlyVolume ?? x.volume?.value ?? null, minutesEach: x.overrides.minutesPerOccurrence ?? x.minutes?.value ?? null,
+        hoursRecovered: x.impact?.monthlyHoursRecovered ?? null, systems, card: playbook.cards.find((c) => c.id === x.key) ?? null,
+      };
+      const text = llm ? await writePlan(llm, input).catch(() => null) : null;
+      const plan = text ?? playbookPlan(input);
+      plans.set(id, { ...plan, timeline: timelineFor(x.classification, systemsInPlan(plan, systems))!, source: text ? 'ai' : 'playbook' });
+    }));
     return withFirmContext(this.db, ctx, async (tx) => {
       await tx.query('select id from discoveries where id = $1 for update', [discoveryId]);
       const v = (await tx.query('select coalesce(max(version), 0) + 1 as v from reports where discovery_id = $1', [discoveryId])).rows[0].v as number;
-      const model = buildReportModel({ playback, profile, firmName, discoveryId, version: v, playbook });
+      const model = buildReportModel({ playback, profile, firmName, discoveryId, version: v, playbook, plans });
       const r = await tx.query('insert into reports (org_id, discovery_id, version, model, created_by) values ($1,$2,$3,$4,$5) returning id',
         [ctx.orgId, discoveryId, v, model, `user:${ctx.userId}`]);
       await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: 'report.created', entityType: 'report', entityId: r.rows[0].id, metadata: { version: v } }]);

@@ -11,7 +11,8 @@
     "migrate": "tsx scripts/migrate.ts",
     "start": "tsx src/server.ts",
     "seed": "tsx scripts/dev-seed.ts",
-    "setup-demo": "tsx scripts/setup-demo.ts"
+    "setup-demo": "tsx scripts/setup-demo.ts",
+    "delete-firm": "tsx scripts/delete-firm.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",

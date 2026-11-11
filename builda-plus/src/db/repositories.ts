@@ -61,6 +61,18 @@ export async function saveSession(tx: Tx, sessionId: string, expectedVersion: nu
 
 export async function insertEvidence(tx: Tx, orgId: string, discoveryId: string, items: VerifiedEvidence[]): Promise<void> {
   for (const e of items) {
+    // Rows from the knowledge engine also record their node and turn (columns added by migration 008).
+    if (e.nodeId) {
+      await tx.query(
+        `insert into evidence_records (id, org_id, discovery_id, session_id, participant_pseudonym, source, pain_point_key,
+           stage_id, task_description, responsible_role, monthly_volume, minutes_per_occurrence, people_involved, systems,
+           operational_impact, reported_cause, potential_improvement, supporting_quote, outstanding_questions, conversion_assumptions, node_id, turn_index)
+         values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)`,
+        [e.id, orgId, discoveryId, e.sessionId, e.participantRef, e.source, e.painPointKey, e.stageId, e.taskDescription,
+         e.responsibleRole, e.monthlyVolume, e.minutesPerOccurrence, e.peopleInvolved, e.systems, e.operationalImpact,
+         e.reportedCause, e.potentialImprovement, e.supportingQuote, e.outstandingQuestions, e.conversionAssumptions, e.nodeId, e.turnIndex]);
+      continue;
+    }
     await tx.query(
       `insert into evidence_records (id, org_id, discovery_id, session_id, participant_pseudonym, source, pain_point_key,
          stage_id, task_description, responsible_role, monthly_volume, minutes_per_occurrence, people_involved, systems,

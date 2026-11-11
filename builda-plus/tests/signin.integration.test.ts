@@ -32,7 +32,7 @@ describe.skipIf(!APP || !ADMIN)('push-button sign-in, no email (Postgres)', () =
     await admin.query(`insert into jada_staff_roles values ($1, 'engineer'), ($2, 'knowledge_editor')`, [engineer, editor]);
     const llm = new ScriptedProvider({});
     const analysis = new AnalysisService(db, { providerFor: () => llm, playbook: SEED_PLAYBOOK, appBaseUrl: 'http://demo' });
-    app = buildApp({ db, firms, analysis, firmAuth: auth, jadaAuth: auth, sessionSecret: SECRET, secureCookies: false,
+    app = buildApp({ laterStages: true, db, firms, analysis, firmAuth: auth, jadaAuth: auth, sessionSecret: SECRET, secureCookies: false,
       interviews: new InterviewService(db, { providerFor: () => llm, playbook: SEED_PLAYBOOK }), participants: new ParticipantAccessService(db),
       decisions: new DecisionService(db, { analysis, firms, playbook: SEED_PLAYBOOK }), jada: new JadaService(db),
       knowledge: new KnowledgeService(db, { allowUnreviewedSeed: true }), signin: new SigninService(db, firms),
@@ -103,7 +103,7 @@ describe.skipIf(!APP || !ADMIN)('push-button sign-in, no email (Postgres)', () =
     const out = await app.inject({ method: 'GET', url: '/signout', headers: { cookie: lead } });
     expect(out.statusCode).toBe(303);
     expect(out.cookies.find((c: any) => c.name === 'bp_dev')?.value).toBe('');
-    for (const url of ['/', '/static/signin.js', '/static/firm-home.js', '/static/session.js']) expect((await app.inject({ method: 'GET', url })).statusCode).toBe(200);
+    for (const url of ['/', '/static/signin.js', '/static/session.js']) expect((await app.inject({ method: 'GET', url })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/firm' })).headers.location).toBe('/app');   // older page redirects to the workspace
   });
 

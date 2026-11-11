@@ -64,15 +64,29 @@ export async function classifyPainPoint(llm: LLMProvider, pp: ConsolidatedPainPo
 
 export const KeyMergeProposalSchema = z.object({
   merges: z.array(z.object({ canonicalKey: z.string(), mergedKeys: z.array(z.string()).min(1), reason: z.string() })),
+  notProblems: z.array(z.string()).default([]),
 });
 
-export async function proposeKeyMerges(llm: LLMProvider, items: { key: string; descriptions: string[] }[], playbookKeys: string[]): Promise<KeyMerge[]> {
-  if (items.length < 2 || items.every((i) => playbookKeys.includes(i.key))) return [];
+export interface KeyReview { merges: KeyMerge[]; notProblems: string[] }
+
+const MERGE_SYSTEM = (playbookKeys: string[]) => `Interview participants in different roles describe the work of one mortgage firm. Each line is a key, the stage, the role(s) and what they said.
+
+1. merges: group keys that are the SAME piece of work, even when:
+   - it is described from different sides: an adviser handing a case over and a case manager receiving it is one handover; chasing documents and documents arriving late is one problem;
+   - it is worded differently, or one person names the cause and another the effect.
+   Do not group different tasks that merely happen at the same stage. Prefer these canonical keys when one fits: ${playbookKeys.join(', ') || 'none'}.
+2. notProblems: keys where nobody describes a problem: no time lost, delay, waiting, rework, errors, workaround, frustration or wish for improvement. Only a description of a task, who does it, or that it works fine. When in doubt, leave the key out of notProblems.
+
+Return merges: [] and notProblems: [] if none apply.`;
+
+export async function proposeKeyMerges(llm: LLMProvider, items: { key: string; stage: string; roles: string[]; descriptions: string[]; causes: string[] }[], playbookKeys: string[]): Promise<KeyReview> {
+  if (items.length < 2 || items.every((i) => playbookKeys.includes(i.key))) return { merges: [], notProblems: [] };
+  const line = (i: (typeof items)[number]) => `${i.key} [${i.stage}; ${i.roles.join(', ')}]: ${i.descriptions.slice(0, 3).join(' | ')}${i.causes.length ? ` | cause: ${i.causes.slice(0, 2).join('; ')}` : ''}`;
   const { data } = await llm.generateStructured({
     task: 'analysis.merge_keys', schemaName: 'key_merges', schema: KeyMergeProposalSchema,
-    system: `Different interview participants may describe the same operational pain point under different keys. Group keys that describe the SAME task and problem. Do not group merely related tasks. Prefer these canonical keys when one fits: ${playbookKeys.join(', ')}. Return merges: [] if none.`,
-    messages: [{ role: 'user', content: items.map((i) => `${i.key}: ${i.descriptions.slice(0, 3).join(' | ')}`).join('\n') }],
-    maxOutputTokens: 1500,
+    system: MERGE_SYSTEM(playbookKeys),
+    messages: [{ role: 'user', content: items.map(line).join('\n') }],
+    maxOutputTokens: 2000,
   });
-  return data.merges;
+  return { merges: data.merges, notProblems: data.notProblems ?? [] };
 }

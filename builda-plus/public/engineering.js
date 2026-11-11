@@ -89,7 +89,7 @@ $scrim.addEventListener('click', () => { $sidebar.classList.remove('is-open'); $
 async function queuePage() {
   shell('queue', [{ label: 'Engineering queue' }]);
   const q = await api('/api/jada/engineering');
-  const nodes = [pageHeader('Engineering queue', 'Opportunities firms have approved and sent from builda+. You decide whether and how each one is built; nothing is approved automatically.')];
+  const nodes = [pageHeader('Engineering queue', 'Opportunities firms have approved and sent from BuildA+. You decide whether and how each one is built; nothing is approved automatically.')];
   if (q.unassigned.length) nodes.push(section('Waiting to be picked up', el('span', { class: 'ws-subtle' }, 'Firm name and reason only until you pick a discovery up'),
     el('ul', { class: 'ws-list' }, ...q.unassigned.map((u) => {
       const m = msgEl();
@@ -205,7 +205,7 @@ function solutionView(d) {
   const s = d.submission, des = d.design;
   return el('div', { class: 'ds-stack' },
     el('div', { class: 'eg-grid' },
-      sub('Recommended by builda+', list(s.recommendedOutcome), el('p', { class: 'ds-help' }, `${s.classificationRationale || ''} Classification: ${CLASS[s.classification] ? CLASS[s.classification][1] : 'not recorded'}${s.automationType === 'conventional' ? ' (conventional automation)' : s.automationType === 'ai_assisted' ? ' (AI-assisted)' : ''}.`)),
+      sub('Recommended by BuildA+', list(s.recommendedOutcome), el('p', { class: 'ds-help' }, `${s.classificationRationale || ''} Classification: ${CLASS[s.classification] ? CLASS[s.classification][1] : 'not recorded'}${s.automationType === 'conventional' ? ' (conventional automation)' : s.automationType === 'ai_assisted' ? ' (AI-assisted)' : ''}.`)),
       sub('Reference templates', el('p', { class: 'ds-body-sm' }, d.templates.reason),
         ...d.templates.matches.map((m) => el('div', { class: 'eg-template' }, el('p', { class: 'ds-cluster' }, el('strong', {}, `${m.template.name} v${m.template.version}`), status(m.readiness.label, m.readiness.productionReady ? 'success' : 'warning')),
           el('p', { class: 'ds-help' }, APPROACH[m.template.approach]), list(m.fit), m.readiness.reasons.length ? el('p', { class: 'ds-help' }, `Why not ready: ${m.readiness.reasons.join('; ')}.`) : null)),
@@ -223,7 +223,7 @@ function solutionView(d) {
 const REQ = [['functional', 'Functional'], ['nonFunctional', 'Non-functional'], ['data', 'Data'], ['integration', 'Integration'], ['access', 'Access and permissions'], ['security', 'Security controls'], ['errorHandling', 'Error handling'], ['logging', 'Logging and audit'], ['acceptance', 'Acceptance criteria']];
 function requirementsView(d) {
   const r = d.design ? d.design.requirements : d.suggestions.design.requirements;
-  return el('div', { class: 'ds-stack' }, d.design ? null : alertBox('info', 'Suggested starting point, not yet recorded', 'Drawn from the matching template, the builda+ brief and JADA’s standard controls. Edit and record it in the design.'),
+  return el('div', { class: 'ds-stack' }, d.design ? null : alertBox('info', 'Suggested starting point, not yet recorded', 'Drawn from the matching template, the BuildA+ brief and JADA’s standard controls. Edit and record it in the design.'),
     el('div', { class: 'eg-grid' }, ...REQ.map(([k, l]) => sub(l, list(r[k], 'To be defined by engineering.')))));
 }
 const RISK = [['operational', 'Operational'], ['security', 'Security'], ['regulatory', 'Regulatory'], ['privacy', 'Privacy'], ['technical', 'Technical dependencies']];
@@ -253,7 +253,7 @@ function outcomesView(d) {
       noBaseline.length ? el('p', { class: 'ds-help' }, `No measured baseline for ${noBaseline.join(', ')}: the result shows whether the agreed target was reached, not how much it improved.`) : null,
       measuresTable(d.plan.successMeasures, d.outcomeResults ? d.outcome : null));
   }
-  return el('div', { class: 'ds-stack' }, alertBox('info', 'Proposed measures, not yet agreed', 'Built only from the firm’s own baseline. Targets stay empty until agreed with the firm in the implementation plan. builda+ never estimates savings or improvements.'),
+  return el('div', { class: 'ds-stack' }, alertBox('info', 'Proposed measures, not yet agreed', 'Built only from the firm’s own baseline. Targets stay empty until agreed with the firm in the implementation plan. BuildA+ never estimates savings or improvements.'),
     measuresTable(d.suggestions.measures, null));
 }
 function planView(d) {
@@ -281,7 +281,7 @@ function decideView(d) {
   if (open) parts.push(alertBox('warning', 'Waiting for the firm', `Asked ${fmtDateTime(open.at)}: ${open.questions.join(' ')}`));
   if (A.has('start_assessment')) { const m = msgEl(); parts.push(el('div', { class: 'ws-fieldset ds-stack' }, el('p', { class: 'ds-body-sm' }, 'Start assessing this submission. Builda+ has recommended it; whether and how to build it is your decision.'), el('div', { class: 'ds-cluster' }, el('button', { class: 'ds-btn ds-btn--primary', type: 'button', onclick: go('start_assessment', null, m) }, 'Start assessment'), m))); }
   if (A.has('request_information')) { const m = msgEl(); parts.push(el('details', { class: 'op-details' }, el('summary', {}, 'Request more information from the firm'), el('div', { class: 'op-details__body ds-stack' },
-    area('eg-q', 'Questions (one per line)', '', 'The firm lead sees and answers these in builda+. Don’t ask for client data.'),
+    area('eg-q', 'Questions (one per line)', '', 'The firm lead sees and answers these in BuildA+. Don’t ask for client data.'),
     el('div', { class: 'ds-cluster' }, el('button', { class: 'ds-btn ds-btn--secondary', type: 'button', onclick: go('request_information', () => ({ questions: lines(val('eg-q')) }), m) }, 'Send questions'), m)))); }
   if (A.has('record_design')) parts.push(designForm(d, go));
   if (A.has('two_week_check') && d.submission.classification === 'automate') parts.push(checkForm(d, go));
@@ -318,7 +318,7 @@ function designForm(d, go) {
     outstandingDecisions: lines(val('eg-decisions')),
   });
   return el('details', { class: 'op-details', open: !d.design }, el('summary', {}, d.design ? 'Revise the solution design' : 'Record the solution design'), el('div', { class: 'op-details__body ds-stack' },
-    el('p', { class: 'ds-help' }, 'Pre-filled from the matching template, the builda+ brief and JADA standard controls. One item per line. Choose conventional automation unless it genuinely can’t do the job.'),
+    el('p', { class: 'ds-help' }, 'Pre-filled from the matching template, the BuildA+ brief and JADA standard controls. One item per line. Choose conventional automation unless it genuinely can’t do the job.'),
     el('div', { class: 'ds-form-grid' }, el('div', { class: 'ds-field' }, el('label', { class: 'ds-label', for: 'eg-tpl' }, 'Reference template'), tpl),
       el('div', { class: 'ds-field' }, el('label', { class: 'ds-label', for: 'eg-appr' }, 'Approach'), appr)),
     area('eg-rationale', 'Why this approach is appropriate', base.rationale, null, 2),
@@ -411,7 +411,7 @@ function historyView(d) {
   const m = path.match(/^\/jada\/engineering\/([0-9a-f-]{36})$/);
   try {
     const nodes = path === '/jada/engineering/templates' ? await templatesPage() : m ? await detailPage(m[1]) : await queuePage();
-    document.title = `${document.querySelector('.ds-breadcrumb [aria-current]')?.textContent || 'Engineering'} — JADA — builda+`;
+    document.title = `${document.querySelector('.ds-breadcrumb [aria-current]')?.textContent || 'Engineering'} — JADA — BuildA+`;
     $main.replaceChildren(...nodes.filter(Boolean));
     if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
   } catch (err) {

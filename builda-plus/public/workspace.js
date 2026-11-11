@@ -1,5 +1,5 @@
 'use strict';
-// builda+ firm workspace (Phase 2). One shell page; the path selects the section. Everything shown comes
+// BuildA+ firm workspace (Phase 2). One shell page; the path selects the section. Everything shown comes
 // from the existing firm-lead API, which is scoped to the signed-in firm by the database (RLS).
 
 /* ============================================================ helpers */
@@ -94,7 +94,7 @@ const ACTIVITY = {
   'pack.confirmed': 'JADA confirmed an implementation pack', 'pack.needs_changes': 'JADA requested changes to an implementation pack',
   'escalation.created': 'Help requested from JADA', 'escalation.resolved': 'JADA resolved a request', 'jada.picked_up': 'A JADA engineer was assigned',
 };
-const ACTOR = { user: 'You', participant: 'Participant', system: 'builda+', jada: 'JADA' };
+const ACTOR = { user: 'You', participant: 'Participant', system: 'BuildA+', jada: 'JADA' };
 
 const status = (label, variant) => el('span', { class: `ds-status ds-status--${variant}` }, label);
 const confidence = (level) => {
@@ -112,17 +112,21 @@ const findingsUrl = (id, findingId) => `/app/discovery/${id}/findings${findingId
 const section = (title, aside, ...nodes) => el('section', { class: 'ws-section' }, el('div', { class: 'ws-section__head' }, el('h2', { class: 'ds-h3 ws-section__title' }, title), aside || null), ...nodes);
 
 /* ============================================================ shell */
+// Set from /api/firm/workspace. Later stages (implementation, impact, engineering) are parked unless switched on.
+const FEATURES = window.BUILDA_FEATURES = { laterStages: false };
+const LATER_STAGE_KEYS = ['implementation', 'impact'];
 const NAV = [
   ['Workspace', [['overview', 'Overview', '/app'], ['profile', 'Firm profile', '/app/profile']]],
-  ['Operational intelligence', [['discovery', 'Discovery', '/app/discovery'], ['evidence', 'Evidence', '/app/evidence'], ['opportunities', 'Opportunities', '/app/opportunities']]],
+  ['Operational intelligence', [['discovery', 'Discovery', '/app/discovery'], ['opportunities', 'Opportunities', '/app/opportunities']]],
   ['Transformation', [['implementation', 'Implementation', '/app/implementation'], ['impact', 'Impact', '/app/impact']]],
   ['Settings', [['organisation', 'Organisation settings', '/app/settings/organisation'], ['account', 'Account settings', '/app/settings/account']]],
 ];
 
 function renderSidebar(active) {
   $sidebar.replaceChildren(
-    el('a', { class: 'ws-brand', href: '/app' }, el('span', { class: 'ws-brand__mark', 'aria-hidden': 'true' }), el('span', {}, 'builda', el('span', { class: 'ws-brand__plus' }, '+'))),
-    el('nav', { class: 'ws-nav', 'aria-label': 'Workspace' }, ...NAV.map(([heading, items], i) => el('div', { class: 'ws-nav__group' },
+    el('a', { class: 'ws-brand', href: '/app' }, el('span', { class: 'ws-brand__mark', 'aria-hidden': 'true' }), el('span', {}, 'BuildA', el('span', { class: 'ws-brand__plus' }, '+'))),
+    el('nav', { class: 'ws-nav', 'aria-label': 'Workspace' }, ...NAV.map(([heading, items]) => [heading, items.filter(([key]) => FEATURES.laterStages || !LATER_STAGE_KEYS.includes(key))])
+      .filter(([, items]) => items.length).map(([heading, items], i) => el('div', { class: 'ws-nav__group' },
       el('p', { class: 'ws-nav__heading', id: `ws-nav-${i}` }, heading),
       el('ul', { 'aria-labelledby': `ws-nav-${i}` }, ...items.map(([key, label, href]) => el('li', {},
         el('a', { class: 'ws-nav__link', href, 'aria-current': key === active ? 'page' : null }, icon(key), label))))))),
@@ -154,7 +158,7 @@ function renderTopbar(firmName, crumbs) {
   // Filtered: replaceChildren() would print a missing breadcrumb (null) as the text "null" while the page loads.
   $topbar.replaceChildren(...[
     el('button', { class: 'ds-btn ds-btn--ghost ws-menu-btn', type: 'button', 'aria-expanded': 'false', 'aria-controls': 'ws-sidebar', onclick: () => setDrawer(!$sidebar.classList.contains('is-open')) }, icon('menu'), el('span', { class: 'ds-visually-hidden' }, 'Open navigation')),
-    el('div', { class: 'ws-topbar__firm' }, el('span', {}, firmName || 'builda+')),
+    el('div', { class: 'ws-topbar__firm' }, el('span', {}, firmName || 'BuildA+')),
     crumbs && crumbs.length ? el('nav', { 'aria-label': 'Breadcrumb' }, el('ol', { class: 'ds-breadcrumb' }, ...crumbs.map((c, i) =>
       el('li', {}, c.href && i < crumbs.length - 1 ? el('a', { href: c.href }, c.label) : el('span', { 'aria-current': i === crumbs.length - 1 ? 'page' : null }, c.label))))) : null,
     el('div', { class: 'ws-account' }, accountBtn, menu)].filter(Boolean));
@@ -186,16 +190,20 @@ function nextAction(ws) {
   if (!d.people) return { title: 'Invite operational participants', text: 'Include two or three senior advisers and at least one case manager or administrator. Your own view is compared with your team’s.', href: `/app/discovery/${d.id}/interviews`, label: 'Invite participants' };
   if (d.completed < d.people && d.completed < 2) return { title: 'Follow up on interviews', text: `${d.completed} of ${d.people} interviews finished. Findings become more reliable as more roles take part.`, href: `/app/discovery/${d.id}`, label: 'View participants' };
   if (d.completed > 0 && !d.analysedAt) return { title: 'Analyse the interviews', text: 'Compare accounts across roles to identify findings, disagreements and missing measurements.', href: `/app/discovery/${d.id}`, label: 'Open discovery' };
-  if (d.awaitingValidation > 0) return { title: 'Review and validate findings', text: `${plural(d.awaitingValidation, 'finding')} ${d.awaitingValidation === 1 ? 'is' : 'are'} awaiting your review. Correct anything that doesn’t match how your firm works.`, href: findingsUrl(d.id), label: 'Review findings' };
-  if (d.status === 'interviews') return { title: 'Complete the discovery review', text: 'Check what the discovery covered and what remains uncertain, then mark it ready for opportunity review.', href: `/app/discovery/${d.id}/review`, label: 'Open review' };
+  if (d.status === 'interviews') return { title: 'Look through the findings', text: 'What the interviews found, with what people said behind each one. Correct anything that’s wrong, then move on to your priorities.', href: `/app/discovery/${d.id}/findings`, label: 'See the findings' };
   if (!d.reportedAt) return { title: 'Create the discovery report', text: 'The report records the findings, evidence and baseline figures as they stand today.', href: `/app/opportunities?d=${d.id}`, label: 'Go to opportunities' };
+  if (!FEATURES.laterStages) {
+    // Approvals are made one at a time on each opportunity; the discovery is complete once at least one is approved.
+    if (!d.approved) return { title: 'Approve your priorities', text: 'Open each opportunity and approve the ones that matter most to your firm, or challenge or reject them with a reason.', href: `/app/opportunities?d=${d.id}`, label: 'Review opportunities' };
+    return { title: 'Discovery complete', text: `${plural(d.approved, 'opportunity', 'opportunities')} approved. Download the discovery report to share with your partners and team.`, href: `/app/opportunities?d=${d.id}#report`, label: 'Go to the report' };
+  }
   if (d.status !== 'priorities_approved') return { title: 'Approve your priorities', text: 'Choose which opportunities to take forward. An implementation pack is prepared for JADA’s engineering review.', href: `/app/opportunities?d=${d.id}`, label: 'Approve priorities' };
   return { title: 'Follow implementation progress', text: 'Your approved priorities are with JADA for engineering review.', href: '/app/implementation', label: 'View implementation' };
 }
 
 // "Next" prompt for a page whose own step is done: the same step the Overview recommends, unless that
 // step is this page itself (then there's nothing new to point to).
-function nextStep(ws, here) {
+function nextStepPrompt(ws, here) {
   const n = nextAction(ws);
   if (n.start || !n.href || n.href === here) return null;
   return el('div', { class: 'ws-nextstep', role: 'status' },
@@ -240,7 +248,7 @@ function overview(ws) {
     { title: 'Firm profile', state: p ? (comp.provided === comp.total ? 'done' : 'active') : 'todo', detail: p ? `${comp.provided} of ${comp.total} details provided` : 'Not started', href: '/app/profile' },
     { title: 'Technology inventory', state: techCount(p) ? 'done' : 'todo', detail: techCount(p) ? plural(techCount(p), 'system') + ' recorded' : (p?.systems?.length ? `${plural(p.systems.length, 'system')} listed in your profile, not yet in the inventory` : 'Not started'), href: '/app/profile/technology' },
     { title: 'Operational discovery', state: !d.people ? 'todo' : d.completed >= d.people ? 'done' : 'active', detail: d.people ? `${d.completed} of ${d.people} interviews finished${d.inProgress ? `, ${d.inProgress} in progress` : ''}` : 'No participants invited yet', href: `/app/discovery/${d.id}` },
-    { title: 'Evidence validation', state: !d.analysedAt ? 'todo' : d.awaitingValidation === 0 ? 'done' : 'active', detail: !d.analysedAt ? 'Interviews not analysed yet' : `${d.painPoints - d.awaitingValidation} of ${plural(d.painPoints, 'finding')} validated`, href: '/app/evidence' },
+    { title: 'Findings', state: !d.analysedAt ? 'todo' : d.status === 'interviews' ? 'active' : 'done', detail: !d.analysedAt ? 'Interviews not analysed yet' : plural(d.painPoints, 'finding'), href: `/app/discovery/${d.id}/findings` },
     { title: 'Opportunity assessment', state: d.reportedAt ? 'done' : d.ranked ? 'active' : 'todo', detail: d.ranked ? `${plural(d.ranked, 'opportunity', 'opportunities')} ranked${d.reportedAt ? ` · report created ${fmtDate(d.reportedAt)}` : ''}` : 'No opportunities ranked yet', href: '/app/opportunities' },
   ];
   const stateLabel = { done: 'Complete', active: 'In progress', todo: 'Not started' };
@@ -258,8 +266,8 @@ function overview(ws) {
   nodes.push(section('Key indicators', el('span', { class: 'ws-subtle' }, 'Across all discoveries'),
     el('dl', { class: 'ws-stats' },
       ...[[all.length, 'Discoveries'], [sum(all, (x) => x.evidence), 'Evidence items'], [sum(all, (x) => x.ranked), 'Opportunities identified'],
-        [sum(all, (x) => x.awaitingValidation), 'Findings awaiting review'], [sum(all, (x) => x.packs), 'Implementation packs']]
-        .map(([v, l]) => el('div', { class: 'ws-stat' }, el('dt', { class: 'ws-stat__label' }, l), el('dd', { class: 'ws-stat__value' }, String(v)))))));
+        [sum(all, (x) => x.painPoints), 'Findings'], FEATURES.laterStages ? [sum(all, (x) => x.packs), 'Implementation packs'] : null]
+        .filter(Boolean).map(([v, l]) => el('div', { class: 'ws-stat' }, el('dt', { class: 'ws-stat__label' }, l), el('dd', { class: 'ws-stat__value' }, String(v)))))));
 
   // Consecutive repeats of the same action (e.g. several profile saves) are shown once, with a count.
   const items = ws.activity.filter((a) => ACTIVITY[a.action]).reduce((acc, a) => {
@@ -283,7 +291,6 @@ function attentionList(ws) {
     if (d.inProgress) items.push([`${plural(d.inProgress, 'interview')} in progress — ${label}`, `/app/discovery/${d.id}`]);
     if (waiting > 0 && d.status !== 'priorities_approved') items.push([`${plural(waiting, 'participant')} not started yet — ${label}`, `/app/discovery/${d.id}`]);
     if (d.completed > 0 && !d.analysedAt) items.push([`Finished interviews not yet analysed — ${label}`, `/app/discovery/${d.id}`]);
-    if (d.awaitingValidation > 0) items.push([`${plural(d.awaitingValidation, 'finding')} awaiting your review — ${label}`, findingsUrl(d.id)]);
   }
   if (p && !techCount(p)) items.push(['Technology inventory is empty', '/app/profile/technology']);
   return items.length
@@ -375,7 +382,7 @@ function profilePage(ws) {
   const msg = el('p', { class: 'ws-inline-msg', role: 'status', 'aria-live': 'polite' });
   const saveBtn = el('button', { class: 'ds-btn ds-btn--primary', type: 'submit' }, 'Save profile');
   const nextSlot = el('div', { class: 'ws-nextslot' });
-  const showNext = () => nextSlot.replaceChildren(...[ws.profile && ws.profile.value ? nextStep(ws, '/app/profile') : null].filter(Boolean));
+  const showNext = () => nextSlot.replaceChildren(...[ws.profile && ws.profile.value ? nextStepPrompt(ws, '/app/profile') : null].filter(Boolean));
 
   const intOrNull = (input, name, { max, decimal } = {}) => {
     const raw = input.value.trim();
@@ -389,6 +396,7 @@ function profilePage(ws) {
 
   const form = el('form', { class: 'ws-form', novalidate: true, onsubmit: async (e) => {
     e.preventDefault();
+    const goNext = form.dataset.next; delete form.dataset.next;   // set only by "Save and add technology", for this submit
     msg.textContent = ''; msg.dataset.kind = '';
     const adv = intOrNull(f.advisers, 'advisers', { max: 500 });
     if (adv.ok && adv.value === null) { setFieldError(f.advisers, 'Enter the number of advisers (0 if none).'); adv.ok = false; }
@@ -419,6 +427,7 @@ function profilePage(ws) {
       await saveProfile(ws, value);
       f.website.value = website;
       msg.textContent = `Profile saved ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`; msg.dataset.kind = 'success'; showNext();
+      if (goNext) { location.href = goNext; return; }   // "Save and add technology"
     } catch (err) {
       msg.textContent = err.issues?.length ? `Please check: ${err.issues.map((i) => i.path || 'form').join(', ')}.` : err.message; msg.dataset.kind = 'error';
     } finally { saveBtn.disabled = false; }
@@ -433,18 +442,20 @@ function profilePage(ws) {
         field('Mortgage advisers', f.advisers, { help: 'Required. Enter 0 if none.', info: 'People who give mortgage advice to clients, including any who also run their own cases. Count each person once, including part-time staff.' }),
         field('Case managers', f.caseManagers, { optional: true, info: 'People who progress cases after the advice: chasing documents and keeping lenders, solicitors and clients updated. Sometimes called case administrators or processors.' }),
         field('Administrators', f.administrators, { optional: true, info: 'People who handle general administration, such as new enquiries, data entry and filing, rather than progressing individual cases.' }),
-        (() => { const fe = field('Mortgage applications a month', f.monthlyApplications, { optional: true, id: 'f-ma', info: 'Roughly how many mortgage applications the firm submits to lenders in a typical month, across all advisers. A rough figure is fine; builda+ shows it to you as an annual total so you can sense-check it.' }); fe.querySelector('.ds-field__foot').prepend(annual); return fe; })(),
+        (() => { const fe = field('Mortgage applications a month', f.monthlyApplications, { optional: true, id: 'f-ma', info: 'Roughly how many mortgage applications the firm submits to lenders in a typical month, across all advisers. A rough figure is fine; BuildA+ shows it to you as an annual total so you can sense-check it.' }); fe.querySelector('.ds-field__foot').prepend(annual); return fe; })(),
         field('Typical weeks from enquiry to offer', f.typicalWeeks, { optional: true, info: 'How many weeks a typical case takes from the client’s first enquiry to the lender’s mortgage offer. A typical figure is fine; ignore unusual cases.' }))),
     el('fieldset', { class: 'ws-fieldset' }, el('legend', {}, 'Business focus and operating model'),
       el('fieldset', { class: 'ws-checks' }, ...legendWithInfo('Mortgage business focus', 'The kinds of mortgage work that make up most of the firm’s business. Tick all that apply.'), ...focus.map(([v, i, l]) => el('label', { class: 'ds-check' }, i, l))),
       el('fieldset', { class: 'ws-checks' }, ...legendWithInfo('Operating model', 'How work is split between advisers and support staff: for example advisers backed by a case team, or advisers running their own cases from start to finish.'), ...models.map(([v, i, l]) => el('label', { class: 'ds-check' }, i, l))),
       field('How the firm is set up', f.businessStructure, { optional: true, info: 'A sentence or two on how the firm is organised: for example one office or several, who manages the case team, and whether advisers have their own support.' })),
     el('fieldset', { class: 'ws-fieldset' }, el('legend', {}, 'Operational context'),
-      field('What slows things down today?', f.operationalChallenges, { optional: true, info: 'Your own view of where work gets stuck. builda+ compares it with what your team describe in their interviews.', help: 'In your own words. This is compared with what your team says in interviews.' }),
-      field('Approximate hourly cost of an administrator (£)', f.loadedHourlyCostGBP, { optional: true, info: 'What an hour of an administrator’s time costs the firm, including salary and employer costs if you know them. It only shows the scale of time recovered; builda+ never estimates it and never presents it as a saving.', help: 'Only used to put a value on time saved. builda+ never estimates it for you.' })),
+      field('What slows things down today?', f.operationalChallenges, { optional: true, info: 'Your own view of where work gets stuck. BuildA+ compares it with what your team describe in their interviews.', help: 'In your own words. This is compared with what your team says in interviews.' }),
+      field('Approximate hourly cost of an administrator (£)', f.loadedHourlyCostGBP, { optional: true, info: 'What an hour of an administrator’s time costs the firm, including salary and employer costs if you know them. It only shows the scale of time recovered; BuildA+ never estimates it and never presents it as a saving.', help: 'Only used to put a value on time saved. BuildA+ never estimates it for you.' })),
     el('fieldset', { class: 'ws-fieldset' }, el('legend', {}, 'Technology environment'),
       el('p', { class: 'ds-body-sm' }, techCount(p) ? `${plural(techCount(p), 'system')} recorded in your technology inventory.` : 'No systems recorded in your technology inventory yet.'),
-      el('div', {}, linkBtn('/app/profile/technology', techCount(p) ? 'Manage technology inventory' : 'Add technology'))),
+      // Technology is saved with the firm details, so before the first save this button saves first (nothing typed is lost).
+      el('div', {}, ws.profile?.value ? linkBtn('/app/profile/technology', techCount(p) ? 'Manage technology inventory' : 'Add technology')
+        : el('button', { class: 'ds-btn ds-btn--secondary', type: 'submit', onclick: () => { form.dataset.next = '/app/profile/technology'; } }, 'Save and add technology'))),
     el('div', { class: 'ws-form__bar' }, saveBtn, msg,
       latest ? el('span', { class: 'ws-subtle' }, `Saved with your current discovery, started ${fmtDate(latest.createdAt)}.`) : null, nextSlot));
   f.monthlyApplications.setAttribute('aria-describedby', 'f-ma-err');
@@ -457,7 +468,7 @@ function technologyPage(ws) {
   const crumbs = [{ label: 'Firm profile', href: '/app/profile' }, { label: 'Technology inventory' }];
   const head = pageHeader('Firm profile', 'The systems your firm already uses. This is for understanding your environment; recording a system doesn’t mean it will be integrated with anything.');
   if (!ws.profile) return { crumbs, nodes: [head, profileTabs('technology'), noDiscoveryForProfile(ws)] };
-  if (!ws.profile.value) return { crumbs, nodes: [head, profileTabs('technology'), empty('Complete the firm details first', 'The inventory is saved with your firm profile, which needs a few basic details first.', linkBtn('/app/profile', 'Complete firm details', 'primary'))] };
+  if (!ws.profile.value) return { crumbs, nodes: [head, profileTabs('technology'), empty('Save the firm details first', 'Your systems are saved with the firm details. Fill them in and click “Save and add technology”; only the number of mortgage advisers is required.', linkBtn('/app/profile', 'Complete firm details', 'primary'))] };
 
   const wrap = el('div', {});
   let editing = null; // index or null
@@ -500,7 +511,7 @@ function technologyPage(ws) {
             } }, 'Remove'))))))))));
     }
     nodes.push(listMsg);
-    if (list.length) { const nx = nextStep(ws, '/app/profile/technology'); if (nx) nodes.push(nx); }
+    if (list.length) { const nx = nextStepPrompt(ws, '/app/profile/technology'); if (nx) nodes.push(nx); }
     nodes.push(entryForm());
     return nodes;
   }
@@ -535,7 +546,7 @@ function technologyPage(ws) {
       catch (err) { msg.textContent = err.issues?.length ? `Please check: ${err.issues.map((i) => i.path || 'form').join(', ')}.` : err.message; msg.dataset.kind = 'error'; submit.disabled = false; }
     } },
       el('legend', {}, isEdit ? 'Edit system' : 'Add a system'),
-      el('div', { class: 'ds-form-grid' }, field('System or product name', name, { info: 'The name your team uses for the system or product, for example the CRM, a sourcing tool or a shared mailbox. Recording it never means builda+ will connect to it.' }), field('Category', category, { info: 'The closest group for the system. CRM and mortgage platforms covers client records, case tracking and sourcing; choose “Other operational applications” if nothing fits.' })),
+      el('div', { class: 'ds-form-grid' }, field('System or product name', name, { info: 'The name your team uses for the system or product, for example the CRM, a sourcing tool or a shared mailbox. Recording it never means BuildA+ will connect to it.' }), field('Category', category, { info: 'The closest group for the system. CRM and mortgage platforms covers client records, case tracking and sourcing; choose “Other operational applications” if nothing fits.' })),
       field('What the firm uses it for', purpose, { optional: true, info: 'What the firm actually uses it for day to day, in a few words, for example “client records and case notes” or “sending documents to clients”.' }),
       el('fieldset', { class: 'ws-checks' }, ...legendWithInfo('Teams that use it', 'Which groups of staff use it regularly. Tick all that apply; this shows where the same information is handled by different teams.'), ...teams.map(([, i, l]) => el('label', { class: 'ds-check' }, i, l))),
       field('Notes', notes, { optional: true, info: 'Anything useful to know, for example known limitations, workarounds, or how information gets in and out (manual entry, exports, integrations).', help: 'For example, known limitations or how data gets in and out.' }),
@@ -612,7 +623,9 @@ function decisionsSection(d, pb) {
     try { const r = await api(`${base}/reports`, 'POST'); location.href = r.pdfUrl; reportMsg.textContent = `Report version ${r.version} created and downloaded.`; reportMsg.dataset.kind = 'success'; }
     catch (err) { reportMsg.textContent = err.message; reportMsg.dataset.kind = 'error'; } finally { reportBtn.disabled = false; }
   } }, 'Create and download report (PDF)');
-  return section('Discovery report', null, el('div', { class: 'ds-stack' },
+  // With later stages parked, the "Your discovery report" panel already names it, so no second heading.
+  const wrap = (body) => (FEATURES.laterStages ? section('Discovery report', null, body) : body);
+  return wrap(el('div', { class: 'ds-stack' },
     d.status === 'interviews' ? alertBox('warning', 'The discovery review isn’t complete yet', 'You can still create a report, but check the discovery review first so open questions and assumptions are recorded.') : null,
     el('div', { class: 'ws-fieldset' }, el('p', { class: 'ds-body-sm' }, 'Each report is saved as a fixed version: the baseline for comparing results after changes are made. Quotes from roles with fewer than three participants are left out to protect individuals.'),
       el('div', { class: 'ds-cluster' }, reportBtn, reportMsg)),
@@ -678,14 +691,14 @@ function organisationPage(ws) {
       el('li', {}, 'JADA staff see a discovery only when they are assigned to it.'),
       el('li', {}, 'Participants’ names are not sent to the AI, and findings are shown to you by role.'),
       el('li', {}, 'Client files and client details are kept out of discovery.'))),
-    alertBox('info', 'Not available yet', 'Renaming the firm and inviting colleagues to the workspace aren’t available in builda+ yet. Contact JADA if you need either.')] };
+    alertBox('info', 'Not available yet', 'Renaming the firm and inviting colleagues to the workspace aren’t available in BuildA+ yet. Contact JADA if you need either.')] };
 }
 
 function accountPage() {
   return { crumbs: [{ label: 'Settings' }, { label: 'Account' }], nodes: [pageHeader('Account settings', null),
     el('div', { class: 'ds-card' }, el('div', { class: 'ds-card__body ds-stack' }, el('dl', { class: 'ds-meta' }, el('dt', {}, 'Role'), el('dd', {}, 'Firm lead')),
       el('div', {}, linkBtn('/signout', 'Sign out')))),
-    alertBox('info', 'Sign-in details', 'Your sign-in is managed outside builda+, so there’s nothing to change here yet.')] };
+    alertBox('info', 'Sign-in details', 'Your sign-in is managed outside BuildA+, so there’s nothing to change here yet.')] };
 }
 
 /* ============================================================ router */
@@ -699,7 +712,7 @@ const ROUTES = [
 
 (async () => {
   const path = location.pathname.replace(/\/+$/, '') || '/app';
-  const route = ROUTES.map(([re, key, fn]) => [path.match(re), key, fn]).find(([m]) => m);
+  let route = ROUTES.map(([re, key, fn]) => [path.match(re), key, fn]).find(([m]) => m);
   renderSidebar(route ? route[1] : null);
   renderTopbar(null, []);
   let ws;
@@ -711,11 +724,15 @@ const ROUTES = [
       : alertBox('danger', 'We couldn’t load your workspace', `${err.message} Please refresh the page.`));
     return;
   }
+  FEATURES.laterStages = !!ws.features?.laterStages;
+  if (!FEATURES.laterStages && route && LATER_STAGE_KEYS.includes(route[1])) route = null;   // parked page
+  if (FEATURES.laterStages) renderSidebar(route ? route[1] : null);
   try {
     const page = route ? await route[2](ws, ...route[0].slice(1)) : { crumbs: [{ label: 'Not found' }], nodes: [pageHeader('Page not found'), empty('This page doesn’t exist', 'Use the navigation to find what you need.', linkBtn('/app', 'Go to overview'))] };
     renderTopbar(ws.firmName, page.crumbs);
-    document.title = `${page.crumbs[page.crumbs.length - 1].label} — ${ws.firmName} — builda+`;
+    document.title = `${page.crumbs[page.crumbs.length - 1].label} — ${ws.firmName} — BuildA+`;
     $main.replaceChildren(...page.nodes.filter(Boolean));
+    if (location.hash) document.getElementById(location.hash.slice(1))?.scrollIntoView();   // e.g. "Go to the report"
   } catch (err) {
     if (err.status === 401) return;
     renderTopbar(ws.firmName, []);

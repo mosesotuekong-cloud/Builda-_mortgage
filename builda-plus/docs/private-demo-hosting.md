@@ -6,14 +6,21 @@ using **synthetic data only**. It is not a pilot: no real firm, no real staff, n
 
 ## The safeguard
 
-builda+ still uses the demo sign-in, where anyone can pick any account. So online it sits behind one
-shared password:
+BuildA+ uses the push-button sign-in (choose an account). Online, the sign-in page asks for a password
+that the host sets:
 
-- Set `DEMO_ACCESS_PASSWORD` (at least 12 characters). Every page, API call and interview link then asks for
-  it first, through the browser's own password prompt (any user name; only the password counts).
+- Set `SIGNIN_PASSWORD` (at least 12 characters). The landing page, "Book a demo" and interview links are
+  public; the sign-in page asks for the password before it shows any account, and remembers it for 12 hours.
+- Ten wrong tries from one address pause sign-in attempts for 15 minutes. Sign-in by URL (`/dev/login`) is
+  switched off whenever a password is set.
 - The server **refuses to start** if `APP_BASE_URL` isn't this computer and no password is set.
-- Search engines are asked not to index anything (`X-Robots-Tag: noindex, nofollow`).
+- An existing `DEMO_ACCESS_PASSWORD` still works as the sign-in password, so older deployments keep running.
 - Share the password separately from the link (for example, the link by email and the password by text message).
+- Demo requests from the website appear at the top of the JADA console (`/jada`). With `BREVO_API_KEY` and
+  `DEMO_REQUEST_FROM` set they are also emailed through Brevo to moses.otuekong@jadasquad.com and
+  azeez@jadasquad.com (change with `DEMO_REQUEST_TO`), with Reply-To set to the person asking.
+  In Brevo: verify jadasquad.com (or a single sender address) under Senders, Domains & Dedicated IPs, create an
+  API key under SMTP & API, and set `DEMO_REQUEST_FROM` to the verified address, e.g. `BuildA+ <demo@jadasquad.com>`.
 - Change the password after each demo, or whenever someone shouldn't have access any more.
 
 ## Recommended: a tunnel from this computer
@@ -31,7 +38,7 @@ and awake during the demo, and the address changes each time you start the tunne
 4. In a second terminal, from `builda-plus`, start builda+ with that address and your password
    (PowerShell; the AI uses the key in `.env`):
    ```powershell
-   $env:DATABASE_URL='postgres://builda_app:<password>@localhost:5433/builda_demo'; $env:PORT='3005'; $env:APP_BASE_URL='https://<random-words>.trycloudflare.com'; $env:DEMO_ACCESS_PASSWORD='<choose 12+ characters>'; npm start
+   $env:DATABASE_URL='postgres://builda_app:<password>@localhost:5433/builda_demo'; $env:PORT='3005'; $env:APP_BASE_URL='https://<random-words>.trycloudflare.com'; $env:SIGNIN_PASSWORD='<choose 12+ characters>'; npm start
    ```
    `APP_BASE_URL` must be the tunnel address, so that interview links point to it.
 5. Open the tunnel address, enter the password, and sign in as the synthetic firm lead.
@@ -69,7 +76,8 @@ What's in the folder for this:
    | `DATABASE_URL` | `postgres://builda_app:<a new random password>@${{Postgres.PGHOST}}:${{Postgres.PGPORT}}/${{Postgres.PGDATABASE}}` |
    | `SESSION_SECRET` | 64 random characters: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"` |
    | `APP_BASE_URL` | the `https://….up.railway.app` address from step 5 |
-   | `DEMO_ACCESS_PASSWORD` | the shared demo password, 12+ characters |
+   | `SIGNIN_PASSWORD` | the sign-in password, 12+ characters |
+   | `BREVO_API_KEY`, `DEMO_REQUEST_FROM` | optional: emails each "Book a demo" request to the JADA team through Brevo (see above) |
    | `OPENAI_API_KEY`, `OPENAI_MODEL` | as in your `.env` (ideally a separate key with a low spending limit) |
    | `RETENTION_MONTHS`, `JADA_CONTACT` | as in your `.env` |
 
@@ -78,12 +86,12 @@ What's in the folder for this:
 8. Load the synthetic firm (once): `railway ssh`, then inside the container run
    `DEMO_SEED=yes node_modules/.bin/tsx scripts/demo-seed.ts`, then `exit`. (It ends by mentioning
    `localhost:3000`; ignore that and use your Railway address.)
-9. Open the address, enter the demo password, and sign in as the synthetic firm lead.
+9. Open the address, choose Sign in, enter the sign-in password, and sign in as the synthetic firm lead.
 
 ### Afterwards
 
 - To update the demo after changes here: `railway up` from `builda-plus`.
-- To change the password: edit `DEMO_ACCESS_PASSWORD` in Variables (Railway redeploys).
+- To change the password: edit `SIGNIN_PASSWORD` in Variables (Railway redeploys).
 - To stop paying for it: delete the project in the Railway dashboard. That deletes the demo database too.
 
 The same container runs on other hosts (Render, Fly.io and so on) if their PostgreSQL lets the admin user
