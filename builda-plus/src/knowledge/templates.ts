@@ -32,7 +32,7 @@ export const TEMPLATES: AutomationTemplate[] = [
     painPointKeys: ['document_chasing'],
     tested: false,
     expectedReductionPct: 0.5,
-    reductionBasis: 'Planning assumption pending the first implementations — not yet measured',
+    reductionBasis: 'JADA’s working estimate, not yet measured at real firms',
     typicalComplexity: 'low',
     automationType: 'conventional',
     humanApprovalBuiltIn: true,

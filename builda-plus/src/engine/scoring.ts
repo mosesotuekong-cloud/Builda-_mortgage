@@ -34,23 +34,23 @@ export function scoreDimensions(o: OpportunityInput): Record<Dimension, Dimensio
   const reg = STAGES[o.stageId].regulatedJudgement;
   return {
     impact: hrs === null
-      ? { score: 1, rationale: 'Hours recovered unknown' }
-      : { score: band(hrs, [5, 15, 30, 60]), rationale: `${hrs} hours/month recovered (bands: 5/15/30/60)` },
+      ? { score: 1, rationale: 'unknown' }
+      : { score: band(hrs, [5, 15, 30, 60]), rationale: `${hrs} hours a month` },
     volume: o.monthlyVolume === null
-      ? { score: 1, rationale: 'Volume unknown' }
-      : { score: band(o.monthlyVolume, [20, 50, 100, 200]), rationale: `${o.monthlyVolume}/month (bands: 20/50/100/200)` },
+      ? { score: 1, rationale: 'unknown' }
+      : { score: band(o.monthlyVolume, [20, 50, 100, 200]), rationale: `${o.monthlyVolume} times a month` },
     feasibility: o.templateAvailable
-      ? { score: 5, rationale: 'Tested JADA template exists' }
-      : { score: { fix: 4, automate: 3, overhaul: 2, keep_human: 1 }[o.classification], rationale: `No template; classified "${o.classification}"` },
+      ? { score: 5, rationale: 'a proven JADA design' }
+      : { score: { fix: 4, automate: 3, overhaul: 2, keep_human: 1 }[o.classification], rationale: { fix: 'a fix to the existing process', automate: 'automation with no proven design yet', overhaul: 'a process redesign', keep_human: 'work that stays with people' }[o.classification] },
     complexity: o.complexity === null
-      ? { score: 2, rationale: 'Complexity not yet assessed' }
-      : { score: { low: 5, medium: 3, high: 1 }[o.complexity], rationale: `${o.complexity} technical complexity` },
+      ? { score: 2, rationale: 'not yet assessed' }
+      : { score: { low: 5, medium: 3, high: 1 }[o.complexity], rationale: o.complexity },
     risk: reg
-      ? { score: 2, rationale: 'Regulated-judgement stage: support and preparation only, adviser decides' }
-      : { score: 5, rationale: 'No regulated judgement at this stage' },
+      ? { score: 2, rationale: 'a regulated step (the adviser decides)' }
+      : { score: 5, rationale: 'no regulated decisions at this step' },
     confidence: {
       score: { very_high: 5, high: 4, medium: 3, low: 2, insufficient: 0 }[o.confidence],
-      rationale: `Evidence confidence: ${o.confidence}`,
+      rationale: o.confidence.replace('_', ' '),
     },
   };
 }
@@ -84,11 +84,12 @@ export function rankOpportunities(list: OpportunityInput[], cfg = DEFAULT_SCORIN
   return { ranked, excluded, configVersion: cfg.version };
 }
 
-// "Why does A rank above B?" — weighted contribution differences, largest first.
+// "Why does A rank above B?" — weighted contribution differences, largest first, in plain words.
+const PLAIN: Record<Dimension, string> = { impact: 'Time saved', volume: 'How often it happens', feasibility: 'Readiness to build', complexity: 'Build effort', risk: 'Regulatory risk', confidence: 'Strength of evidence' };
 export function explainRanking(a: ScoredOpportunity, b: ScoredOpportunity, cfg = DEFAULT_SCORING_CONFIG): string[] {
   return DIMENSIONS
     .map((d) => ({ d, delta: cfg.weights[d] * ((a.dimensions[d].score - b.dimensions[d].score) / 5) * 100 }))
     .filter((x) => Math.abs(x.delta) >= 0.05)
     .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))
-    .map(({ d, delta }) => `${d}: ${delta > 0 ? '+' : ''}${delta.toFixed(1)} pts (${a.dimensions[d].rationale} vs ${b.dimensions[d].rationale})`);
+    .map(({ d, delta }) => `${PLAIN[d]}: ${a.dimensions[d].rationale} here, ${b.dimensions[d].rationale} for the next one (${delta > 0 ? '+' : '−'}${Math.abs(delta).toFixed(0)} points out of 100)`);
 }

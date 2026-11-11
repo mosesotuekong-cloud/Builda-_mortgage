@@ -275,7 +275,8 @@ export class AnalysisService {
         quotes: (x.evidence_summary?.quotesByRole ?? []).filter((q: any) => quotable(q.role)).map((q: any) => ({ role: ROLE_LABELS[q.role as Role], quote: q.quote })),
         quotesWithheld: (x.evidence_summary?.quotesByRole ?? []).filter((q: any) => !quotable(q.role)).length as number,
         systems: (x.evidence_summary?.systems ?? []) as string[], causes: x.evidence_summary?.causes ?? [], improvements: x.evidence_summary?.improvements ?? [],
-        outstandingQuestions: x.evidence_summary?.outstandingQuestions ?? [], missingMeasurements: x.evidence_summary?.missingMeasurements ?? [],
+        outstandingQuestions: x.evidence_summary?.outstandingQuestions ?? [], // A figure the firm lead has entered isn't missing any more.
+        missingMeasurements: ((x.evidence_summary?.missingMeasurements ?? []) as string[]).filter((m) => x.overrides?.[m] === undefined || x.overrides?.[m] === null),
         impact: x.impact, score: x.score === null ? null : Number(x.score), rank: x.rank, twoWeek: x.feasibility, breakdown: x.score_breakdown ?? null,
         assumptions: x.assumptions ?? [], explanation: x.explanation ?? [],
         corrections: corrections.rows.filter((c) => c.entity_id === x.id),
@@ -405,7 +406,7 @@ export class AnalysisService {
 
       const FIELD_LABEL: Record<string, string> = { classification: 'Approach', title: 'Title', stageId: 'Stage', monthlyVolume: 'Monthly volume', minutesPerOccurrence: 'Minutes each time',
         reductionPct: 'Share of work that could be removed', validated: 'Validated', clarification: 'Clarification', review: 'Evidence review',
-        implementationCostGBP: 'Implementation cost', monthlyCashSavingGBP: 'Spending the firm can reduce', staffHoursPerCase: 'Staff hours per case',
+        implementationCostGBP: 'Cost to build it', monthlyCashSavingGBP: 'Spending the firm can reduce', staffHoursPerCase: 'Staff hours per case',
         revenuePerCaseGBP: 'Revenue per case', demandConfirmed: 'Demand for more cases confirmed', opportunity_decision: 'Opportunity decision' };
       const entry = (h: any) => ({ entityType: h.entity_type as string, entityId: h.entity_id as string, field: h.field as string, label: FIELD_LABEL[h.field] ?? h.field, oldValue: h.old_value, newValue: h.new_value, reason: h.reason as string | null, at: h.created_at });
 

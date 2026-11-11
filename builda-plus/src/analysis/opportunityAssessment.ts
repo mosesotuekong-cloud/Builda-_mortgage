@@ -63,11 +63,11 @@ export function assessOpportunities(dw: DiscoveryWorkspace, playbook: Playbook, 
       ...systems.map((s) => (known(s) ? `${s} (in your technology inventory)` : `${s} (named in interviews, not in your technology inventory)`)),
       ...(f.roles.length > 1 ? [`Roles involved: ${f.roles.join(', ')}`] : []),
       ...(f.requiresComplianceReview ? ['A qualified compliance reviewer'] : []),
-      ...(f.classification === 'automate' ? [template ? `JADA template “${template.name}”${template.tested ? '' : ' (not yet tested)'}` : 'No JADA template yet: an engineering assessment is needed'] : []),
+      ...(f.classification === 'automate' ? [template ? `JADA’s design “${template.name}”${template.tested ? '' : ' (not yet used at a firm)'}` : 'No JADA design yet: JADA’s engineers need to assess it'] : []),
     ];
     const checks = f.classification ? checksFor(playbook, f.stageId as StageId, f.classification) : [];
     const risks = [
-      ...(STAGES[f.stageId as StageId]?.regulatedJudgement ? ['This stage involves regulated judgement: any change may only prepare information for the adviser.'] : []),
+      ...(STAGES[f.stageId as StageId]?.regulatedJudgement ? ['This is a regulated step: any change may only prepare information for the adviser, who decides.'] : []),
       ...checks.map((c) => `${c.check.title}: ${c.check.requiredAction}`),
       ...(f.requiresComplianceReview && !checks.length ? ['No approved regulatory check covers this stage: refer it to a qualified compliance reviewer.'] : []),
       ...(card?.regulatoryLimits ?? []),
@@ -99,9 +99,9 @@ export function assessOpportunities(dw: DiscoveryWorkspace, playbook: Playbook, 
       evidence: { ids: f.evidenceIds, items: items.map((e) => ({ id: e.id, observed: e.observed, role: e.role, source: e.source, review: e.review.status })), total: items.length, disputed: f.disputedEvidence, bySource, dimensions: f.dimensions, disagreements: f.disagreements },
       assessment: {
         dependencies, risks, missing: [...new Set(missing)],
-        complexity: template ? `${template.typicalComplexity[0]!.toUpperCase()}${template.typicalComplexity.slice(1)} (from the JADA template)` : 'Not yet assessed: needs engineering review',
-        feasibility: f.classification === 'automate' ? (template?.tested ? 'A tested JADA template exists' : template ? 'A JADA template exists but is not yet tested' : 'No JADA template: feasibility to be assessed')
-          : f.classification === 'fix' ? 'Usually feasible within existing systems and processes' : f.classification === 'overhaul' ? 'Needs process redesign before anything is built' : '—',
+        complexity: template ? `${template.typicalComplexity[0]!.toUpperCase()}${template.typicalComplexity.slice(1)} (based on JADA’s design)` : 'Not yet assessed: JADA’s engineers need to look at it',
+        feasibility: f.classification === 'automate' ? (template?.tested ? 'Yes: JADA has a proven design for this' : template ? 'Likely: JADA has a design for this, not yet used at a firm' : 'Not yet known: JADA has no design for this yet')
+          : f.classification === 'fix' ? 'Usually, within the systems and processes you already have' : f.classification === 'overhaul' ? 'Only after the process is redesigned' : '—',
         twoWeek: f.classification === 'automate' && f.twoWeek ? { status: (f.twoWeek as any).status, blockers: (f.twoWeek as any).blockers ?? [] } : null,
       },
       businessCase: bc, recommendedAction: action, decision,
@@ -126,7 +126,7 @@ function recommend(c: Classification | null, pr: PriorityAssessment, f: Finding,
   switch (c) {
     case 'overhaul': return { title: 'Redesign the process', steps: ['Map the current process with the roles involved, including handovers and waiting points.', 'Agree a target process and clear ownership.', 'Only consider automation once the redesigned process is stable.'] };
     case 'fix': return { title: 'Correct the existing process or configuration', steps: [systems.length ? `Investigate how ${systems.join(', ')} is set up and used for this work.` : 'Investigate how the existing process is followed.', 'Correct it with the people involved; no new tool is needed.', 'Check the problem has gone after a few weeks.'] };
-    case 'automate': return { title: 'Prepare a solution specification for engineering review', steps: [template ? `Start from the JADA template “${template.name}” (${template.automationType === 'conventional' ? 'conventional automation, no AI' : 'approach to be confirmed'}).` : 'No tested pattern exists: JADA engineering assesses whether and how to automate it.', 'Agree success measures and the human approval points before building.', 'Once you approve it, JADA reviews and scopes the build with you.'] };
+    case 'automate': return { title: 'Write up what to build, for JADA’s engineers to review', steps: [template ? `Start from JADA’s design “${template.name}” (${template.automationType === 'conventional' ? 'standard automation, no AI' : 'approach to be confirmed'}).` : 'No proven design exists: JADA’s engineers assess whether and how to automate it.', 'Agree how you will measure success, and where a person must approve, before anything is built.', 'Once you approve it, JADA reviews and prices the build with you.'] };
     case 'keep_human': return { title: 'Keep this with people', steps: ['Record why human judgement and accountability must remain.', 'Look for safe supporting improvements, such as preparing information in advance.'] };
     default: return { title: 'Classify this finding', steps: ['Choose overhaul, fix, automate or keep human in the finding’s “Correct or clarify” section in discovery.', 'Classification comes before prioritisation: an unclassified finding is not ranked.'] };
   }

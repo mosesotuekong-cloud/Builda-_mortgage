@@ -38,17 +38,17 @@ const avg = (...xs: (number | undefined)[]) => {
 export function assessPriority(i: PriorityInput): PriorityAssessment {
   const gates: Gate[] = [];
   const gate = (code: string, label: string, blocksPriority: boolean, blocksEngineering = blocksPriority) => gates.push({ code, label, blocksPriority, blocksEngineering });
-  if (i.classification === 'keep_human') gate('keep_human', 'Stays with people: not ranked as a change', true);
+  if (i.classification === 'keep_human') gate('keep_human', 'Best left with people: not ranked as a change', true);
   if (!i.classification) gate('unclassified', 'Not yet classified', true);
-  if (i.dimensions.existence.level === 'insufficient') gate('no_firm_evidence', 'No firm-specific evidence that the problem exists here', true);
-  else if (i.dimensions.existence.level === 'low') gate('single_account', 'Described by one person only: corroborate before engineering review', false, true);
+  if (i.dimensions.existence.level === 'insufficient') gate('no_firm_evidence', 'Nobody at your firm has described this yet', true);
+  else if (i.dimensions.existence.level === 'low') gate('single_account', 'Only one person has described this: get a second person to confirm it before anything is built', false, true);
   // A serious regulatory constraint is never outweighed by impact: it takes the item out of the ranking.
-  if (i.requiresComplianceReview && i.classification && i.classification !== 'keep_human') gate('compliance_review', 'Involves regulated judgement: compliance review first', true);
-  if (i.disputedEvidence > 0) gate('disputed_evidence', 'Some evidence is disputed', false, false);
-  if (i.missingMeasurements.length) gate('missing_measurements', 'Volume or time not yet given: value can’t be estimated', false, false);
+  if (i.requiresComplianceReview && i.classification && i.classification !== 'keep_human') gate('compliance_review', 'Involves regulated advice: needs a compliance review first', true);
+  if (i.disputedEvidence > 0) gate('disputed_evidence', 'Some of the evidence has been disputed', false, false);
+  if (i.missingMeasurements.length) gate('missing_measurements', 'We don’t yet know how often it happens or how long it takes, so its value can’t be worked out', false, false);
   // No separate validation step: approving an opportunity is how the firm confirms its finding. Unconfirmed
   // findings still can't go to the (parked) engineering hand-over.
-  if (!i.validated) gate('not_validated', 'Not yet confirmed by the firm', false, true);
+  if (!i.validated) gate('not_validated', 'Your firm hasn’t confirmed this finding yet (approving it confirms it)', false, true);
 
   const blocked = gates.some((g) => g.blocksPriority);
   let status: OpportunityStatus;

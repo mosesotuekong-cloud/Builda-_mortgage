@@ -9,10 +9,10 @@ const OPP_STATUS = {
   approved: ['Approved', 'success'], rejected: ['Rejected', 'neutral'], sent_to_engineering: ['With JADA engineering', 'success'],
 };
 const BAND = { High: ['High', 'success'], Medium: ['Medium', 'info'], Low: ['Low', 'neutral'] };
-const AUTOMATION = { conventional: 'Conventional automation (no AI)', ai_assisted: 'AI-assisted automation', not_assessed: 'Automation approach not yet assessed' };
+const AUTOMATION = { conventional: 'Standard automation (no AI)', ai_assisted: 'Automation with AI assistance', not_assessed: 'Not yet decided' };
 const DECISION_LABEL = { approved: 'Approved', challenged: 'Challenged', rejected: 'Rejected', reopened: 'Reopened', sent_to_engineering: 'Sent to JADA engineering review' };
 const INPUT_SOURCE = { employee_reported: 'employee_reported', firm_provided: 'firm_provided', assumption: 'assumption', measured: 'measured' };
-const READING = { value: ['Value', 'impact and volume'], feasibility: ['Feasibility', 'feasibility and complexity'], confidence: ['Evidence confidence', 'how well supported'], risk: ['Risk', '5 means lowest risk'] };
+const READING = { value: ['Value to the firm', 'time saved and how often it happens'], feasibility: ['Ease of building', 'how ready and how much work'], confidence: ['Strength of evidence', 'how well it’s backed up'], risk: ['Regulatory safety', 'how far it stays clear of regulated advice'] };
 const CASE_INPUT_ORDER = ['monthlyVolume', 'minutesPerOccurrence', 'reductionPct', 'loadedHourlyCostGBP', 'implementationCostGBP', 'monthlyCashSavingGBP', 'staffHoursPerCase', 'revenuePerCaseGBP'];
 const oUrl = (id, oid) => `/app/opportunities/${id}${oid ? `/${oid}` : ''}`;
 const oppStatus = (s) => { const [l, v] = OPP_STATUS[s] || [s, 'neutral']; return status(l, v); };
@@ -136,7 +136,7 @@ function methodSection(intel) {
 }
 
 /* ============================================================ detail */
-const OPP_TABS = [['overview', 'Overview'], ['problem', 'The problem'], ['evidence', 'Evidence'], ['assessment', 'Assessment'], ['case', 'Business case'], ['action', 'Recommended action'], ['review', 'Review and approval']];
+const OPP_TABS = [['overview', 'At a glance'], ['problem', 'The problem'], ['evidence', 'Evidence'], ['case', 'Business case'], ['assessment', 'Can it be done?'], ['action', 'What to do next'], ['review', 'Your decision']];
 
 function opportunityDetail(intel, oppId) {
   const id = intel.discovery.id;
@@ -152,20 +152,56 @@ function opportunityDetail(intel, oppId) {
   const sec = (k, ...nodes) => { const s = section(OPP_TABS.find(([x]) => x === k)[1], null, ...nodes); s.id = `op-${k}`; return s; };
   return { crumbs: [...crumbs, { label: o.title }], nodes: [head, nav,
     sec('overview', overviewView(intel, o)), sec('problem', problemView(o)), sec('evidence', evidenceView(intel, o)),
-    sec('assessment', assessmentView(o)), sec('case', caseView(intel, o)), sec('action', actionView(o)), sec('review', reviewView(intel, o))] };
+    sec('case', caseView(intel, o)), sec('assessment', assessmentView(o)), sec('action', actionView(o)), sec('review', reviewView(intel, o))] };
 }
 
 function overviewView(intel, o) {
   const blocking = o.gates.filter((g) => g.blocksPriority);
-  return el('div', { class: 'ds-stack' },
+  return el('div', { class: 'ds-stack' }, glance(o),
+    el('h3', { class: 'ds-h4' }, 'How it scores'),
     blocking.length ? alertBox('warning', 'Not prioritised', `${blocking.map((g) => g.label).join('. ')}. However large the impact, this stays out of the priority order until that is resolved.`) : null,
     el('div', { class: 'op-readings' }, ...Object.keys(READING).map((k) => {
       const r = o.readings[k];
       return el('div', { class: 'dw-figure' }, el('span', { class: 'ws-subtle' }, READING[k][0]),
         el('strong', {}, r === null || r === undefined ? 'Not scored' : `${num(r)} / 5`), el('span', { class: 'ws-subtle' }, k === 'value' && o.readings.valueUnknown ? 'impact unknown: scored at the floor, not a measured low value' : READING[k][1]));
     })),
-    el('p', { class: 'ds-help' }, 'Each reading is on a 1–5 scale from the existing scoring rules, shown separately so a large estimate can’t hide weak evidence or high risk. The overall score combines them by fixed weights; the gates above are applied first.'),
-    o.explanation.length ? el('div', {}, el('h3', { class: 'ds-h4' }, 'Why it ranks above the next opportunity'), el('ul', { class: 'ws-list ds-body-sm' }, ...o.explanation.map((x) => el('li', {}, x)))) : null);
+    el('p', { class: 'ds-help' }, 'Each is scored 1 to 5, where 5 is best. They’re kept separate so a big estimate can’t hide weak evidence or regulatory risk. The priority order combines them with fixed weights; no AI is involved.'),
+    o.explanation.length ? el('div', {}, el('h3', { class: 'ds-h4' }, 'Why it’s ranked above the next one'), el('ul', { class: 'ws-list ds-body-sm' }, ...o.explanation.map((x) => el('li', {}, x)))) : null);
+}
+
+// The business view first: what the problem costs now, what fixing it could free up, money saved, how sure
+// we are and what's still needed. Every figure comes from the business case and says where it came from.
+const SRC_WORDS = { firm_provided: 'entered by your firm', employee_reported: 'from staff interviews', measured: 'measured', assumption: 'JADA’s working estimate' };
+function glance(o) {
+  const bc = o.businessCase, ex = o.evidence.dimensions.existence;
+  const fig = (label, figure, basis, tone) => el('div', { class: `dw-figure op-glance__fig${tone ? ` op-glance__fig--${tone}` : ''}` },
+    el('span', { class: 'ws-subtle' }, label), el('strong', {}, figure), basis ? el('span', { class: 'ds-body-sm' }, basis) : null);
+  const inp = (k) => (bc && bc.inputs[k]) || { value: null };
+  const from = (k) => (inp(k).source ? ` (${SRC_WORDS[inp(k).source] || 'source not recorded'})` : '');
+  const t = bc ? bc.timeRecovered : null;
+  const rate = inp('loadedHourlyCostGBP').value;
+  const spent = t ? t.monthlyHoursSpent : null, saved = t ? t.monthlyHoursRecovered : null;
+  const spentGBP = spent !== null && rate !== null ? spent * rate : null;
+  const people = o.problem.participantCount;
+  const weak = ex.level === 'low' || ex.level === 'insufficient';
+  const cards = [
+    fig('What it costs you now', spent !== null ? `${num(spent)} staff hours a month` : 'Not known yet',
+      spent !== null ? `${num(inp('monthlyVolume').value)} times a month${from('monthlyVolume')} × ${num(inp('minutesPerOccurrence').value)} minutes each${from('minutesPerOccurrence')}.`
+        + (spentGBP !== null ? ` About ${gbp(spentGBP)} a month (${gbp(spentGBP * 12)} a year) of staff time at ${gbp(rate)} an hour.` : '')
+        : 'Needs how often it happens and how long each one takes.'),
+    fig('What fixing it could free up', saved !== null ? `${num(saved)} hours a month` : 'Not known yet',
+      saved !== null ? `${Math.round(inp('reductionPct').value * 100)}% of that time${from('reductionPct')}.`
+        + (t.valueAtStatedCostGBP !== null ? ` Worth about ${gbp(t.valueAtStatedCostGBP * 12)} a year in staff time: spare capacity, not money saved, unless spending goes down.` : '')
+        : 'Needs the hours spent and the share that could be saved.', 'good'),
+    fig('Money saved', bc && bc.cashSavings.monthlyGBP !== null ? `${gbp(bc.cashSavings.monthlyGBP)} a month` : 'None identified yet',
+      bc && bc.cashSavings.monthlyGBP !== null ? (bc.cashSavings.basis || 'Entered by your firm.') : 'Only spending you would actually stop counts, such as overtime or a planned hire. Add it under Business case.'),
+    fig('How sure we are', CONFIDENCE[ex.level] ? CONFIDENCE[ex.level][1] : ex.level,
+      `${people === 1 ? 'One person' : `${people} people`} described it (${plural(o.evidence.total, 'piece')} of evidence).${people < 2 ? ' A second person confirming it would make this much stronger.' : ''}`, weak ? 'warn' : null),
+  ];
+  const needed = o.assessment.missing.slice(0, 3);
+  return el('div', { class: 'ds-stack' },
+    el('div', { class: 'op-glance' }, ...cards),
+    needed.length ? el('div', {}, el('h3', { class: 'ds-h4' }, 'Still needed to make a firm decision'), el('ul', { class: 'ds-body-sm' }, ...needed.map((m) => el('li', {}, m)))) : null);
 }
 
 function problemView(o) {
@@ -179,7 +215,7 @@ function evidenceView(intel, o) {
   return el('div', { class: 'ds-stack' },
     el('p', { class: 'ds-cluster' }, ...Object.entries(o.evidence.bySource).map(([s, n]) => el('span', { class: 'ds-cluster' }, sourceBadge(s), el('span', { class: 'ws-subtle' }, String(n))))),
     el('div', { class: 'ds-table-wrap' }, el('table', { class: 'ds-table' },
-      el('thead', {}, el('tr', {}, el('th', { scope: 'col' }, 'Claim'), el('th', { scope: 'col' }, 'Confidence'), el('th', { scope: 'col' }, 'Why'))),
+      el('thead', {}, el('tr', {}, el('th', { scope: 'col' }, 'What we’re saying'), el('th', { scope: 'col' }, 'How sure'), el('th', { scope: 'col' }, 'Why'))),
       el('tbody', {}, ...['existence', 'volume', 'effort', 'impact'].map((k) => el('tr', {}, el('th', { scope: 'row' }, DIMENSION_LABEL[k]), el('td', {}, confidence(o.evidence.dimensions[k].level)), el('td', { class: 'ds-body-sm' }, o.evidence.dimensions[k].reasons.join('. '))))))),
     o.evidence.disagreements.length ? alertBox('warning', 'Accounts differ', o.evidence.disagreements.map((d) => `${d.field === 'minutesPerOccurrence' ? 'Minutes each time' : 'Times a month'}: ${d.values.map((v) => `${v.role} ${num(v.value)}`).join(' · ')}`).join('. ')) : null,
     o.evidence.disputed ? el('p', { class: 'ds-help' }, `${plural(o.evidence.disputed, 'piece')} of evidence you disputed ${o.evidence.disputed === 1 ? 'is' : 'are'} left out.`) : null,
@@ -193,15 +229,15 @@ function assessmentView(o) {
   const list = (title, xs, none) => el('div', {}, el('h3', { class: 'ds-h4' }, title), xs.length ? el('ul', { class: 'ds-body-sm' }, ...xs.map((x) => el('li', {}, x))) : el('p', { class: 'ds-muted ds-body-sm' }, none));
   return el('div', { class: 'ds-stack' },
     el('dl', { class: 'ds-meta' },
-      el('dt', {}, 'Classification'), el('dd', {}, o.classification ? `${CLASSIFICATION[o.classification][1]} — ${CLASSIFICATION_SOURCE[o.classificationSource] || 'source not recorded'}` : 'Not yet classified'),
-      o.automationType ? el('dt', {}, 'Automation type') : null, o.automationType ? el('dd', {}, AUTOMATION[o.automationType]) : null,
-      el('dt', {}, 'Rationale'), el('dd', {}, o.classificationRationale || 'None recorded'),
-      el('dt', {}, 'Feasibility'), el('dd', {}, a.feasibility), el('dt', {}, 'Complexity'), el('dd', {}, a.complexity),
-      a.twoWeek ? el('dt', {}, 'Two-week build check') : null, a.twoWeek ? el('dd', {}, `${a.twoWeek.status.replace(/_/g, ' ')}${a.twoWeek.blockers.length ? `: ${a.twoWeek.blockers.join('; ')}` : ''}`) : null),
-    el('div', { class: 'ws-grid-2' }, list('Risks, regulatory considerations and controls', a.risks, 'None identified from the playbook. Engineering review still checks this.'), list('Dependencies', a.dependencies, 'None identified yet.')),
-    list('What’s missing', a.missing, 'Nothing outstanding.'),
-    o.gates.length ? el('div', {}, el('h3', { class: 'ds-h4' }, 'Gates'), el('ul', { class: 'ws-list ds-body-sm' }, ...o.gates.map((g) => el('li', {}, g.label,
-      el('span', { class: 'ws-subtle' }, g.blocksPriority ? 'blocks prioritisation' : g.blocksEngineering ? 'blocks engineering hand-over' : 'shown for awareness'))))) : null);
+      el('dt', {}, 'Suggested approach'), el('dd', {}, o.classification ? `${CLASSIFICATION[o.classification][1]} (${(CLASSIFICATION_SOURCE[o.classificationSource] || 'source not recorded').toLowerCase()})` : 'Not yet decided'),
+      o.automationType ? el('dt', {}, 'Kind of automation') : null, o.automationType ? el('dd', {}, AUTOMATION[o.automationType]) : null,
+      el('dt', {}, 'Why'), el('dd', {}, o.classificationRationale || 'None recorded'),
+      el('dt', {}, 'Can it be built?'), el('dd', {}, a.feasibility), el('dt', {}, 'Build effort'), el('dd', {}, a.complexity),
+      a.twoWeek ? el('dt', {}, 'Could it be built in two weeks?') : null, a.twoWeek ? el('dd', {}, `${a.twoWeek.status === 'blocked' ? 'Not yet' : 'Possibly, once JADA has checked it'}${a.twoWeek.blockers.length ? `: ${a.twoWeek.blockers.join('; ')}` : ''}`) : null),
+    el('div', { class: 'ws-grid-2' }, list('Risks and safeguards', a.risks.map((r) => r.replace(/^Control: /, 'Safeguard: ')), 'None found in JADA’s industry knowledge. JADA’s engineers still check this.'), list('What it relies on', a.dependencies, 'Nothing identified yet.')),
+    list('Still needed to decide', a.missing, 'Nothing outstanding.'),
+    o.gates.length ? el('div', {}, el('h3', { class: 'ds-h4' }, 'What’s holding it back'), el('ul', { class: 'ws-list ds-body-sm' }, ...o.gates.map((g) => el('li', {}, g.label,
+      el('span', { class: 'ws-subtle' }, g.blocksPriority ? 'keeps it out of the priority list' : g.blocksEngineering ? 'must be sorted before anything is built' : 'for information'))))) : null);
 }
 
 function caseView(intel, o) {
@@ -210,21 +246,21 @@ function caseView(intel, o) {
   const value = (title, figure, method, extra) => el('div', { class: 'dw-figure op-value' }, el('span', { class: 'ws-subtle' }, title), el('strong', {}, figure), el('span', { class: 'ds-body-sm' }, method), extra || null);
   const t = bc.timeRecovered;
   return el('div', { class: 'ds-stack' },
-    el('p', { class: 'ds-help' }, 'Four kinds of value, kept apart. Recovered time is capacity, not cash: it only becomes a saving if the firm actually spends less.'),
+    el('p', { class: 'ds-help' }, 'Four kinds of value, kept separate. Time saved is not money saved: it only becomes a saving if the firm actually spends less, for example on overtime.'),
     el('div', { class: 'op-values' },
-      value('Time recovered', t.monthlyHoursRecovered === null ? 'Unknown' : `${num(t.monthlyHoursRecovered)} hours / month`, t.method,
-        t.valueAtStatedCostGBP !== null ? el('span', { class: 'ws-subtle' }, `${gbp(t.valueAtStatedCostGBP)} at your stated hourly cost — not a saving`) : null),
-      value('Cash savings', bc.cashSavings.monthlyGBP === null ? 'None stated' : `${gbp(bc.cashSavings.monthlyGBP)} / month`, bc.cashSavings.method,
+      value('Time saved', t.monthlyHoursRecovered === null ? 'Unknown' : `${num(t.monthlyHoursRecovered)} hours / month`, t.method,
+        t.valueAtStatedCostGBP !== null ? el('span', { class: 'ws-subtle' }, `Worth ${gbp(t.valueAtStatedCostGBP)} a month in staff time at your hourly cost (not money saved)`) : null),
+      value('Money saved', bc.cashSavings.monthlyGBP === null ? 'None stated' : `${gbp(bc.cashSavings.monthlyGBP)} / month`, bc.cashSavings.method,
         bc.cashSavings.basis ? el('span', { class: 'ws-subtle' }, `Basis: ${bc.cashSavings.basis}`) : null),
-      value('Operational capacity', bc.capacity.additionalCasesPerMonth === null ? 'Unknown' : `${num(bc.capacity.additionalCasesPerMonth)} more cases / month`, bc.capacity.method),
-      value('Revenue', bc.revenue.monthlyPotentialGBP === null ? 'Not estimated' : `${gbp(bc.revenue.monthlyPotentialGBP)} / month`, bc.revenue.method)),
+      value('Extra cases you could take on', bc.capacity.additionalCasesPerMonth === null ? 'Unknown' : `${num(bc.capacity.additionalCasesPerMonth)} more cases / month`, bc.capacity.method),
+      value('Extra revenue', bc.revenue.monthlyPotentialGBP === null ? 'Not estimated' : `${gbp(bc.revenue.monthlyPotentialGBP)} / month`, bc.revenue.method)),
     el('div', { class: 'dw-figure' }, el('span', { class: 'ws-subtle' }, 'Payback'), el('strong', {}, bc.payback.months === null ? 'Not calculated' : `${num(bc.payback.months)} months`), el('span', { class: 'ds-body-sm' }, bc.payback.reason)),
-    el('div', { class: 'ds-table-wrap' }, el('table', { class: 'ds-table' }, el('caption', {}, 'Inputs and where each came from'),
-      el('thead', {}, el('tr', {}, ...['Input', 'Value', 'Source'].map((h) => el('th', { scope: 'col' }, h)))),
+    el('div', { class: 'ds-table-wrap' }, el('table', { class: 'ds-table' }, el('caption', {}, 'The figures used, and where each came from'),
+      el('thead', {}, el('tr', {}, ...['Figure', 'Value', 'Where it came from'].map((h) => el('th', { scope: 'col' }, h)))),
       el('tbody', {}, ...CASE_INPUT_ORDER.filter((k) => bc.inputs[k]).map((k) => [k, bc.inputs[k]]).map(([k, i]) => el('tr', {}, el('th', { scope: 'row' }, i.label),
         el('td', {}, i.value === null ? 'Missing' : /GBP$/.test(k) ? gbp(i.value) : k === 'reductionPct' ? `${Math.round(i.value * 100)}%` : num(i.value)),
         el('td', {}, i.source ? el('span', { class: 'ds-cluster' }, sourceBadge(INPUT_SOURCE[i.source] || 'assumption'), i.note ? el('span', { class: 'ws-subtle' }, i.note) : null) : el('span', { class: 'ws-subtle' }, '—'))))))),
-    bc.missing.length ? el('div', {}, el('h3', { class: 'ds-h4' }, 'Missing inputs'), el('ul', { class: 'ds-body-sm' }, ...bc.missing.map((m) => el('li', {}, m)))) : null,
+    bc.missing.length ? el('div', {}, el('h3', { class: 'ds-h4' }, 'Figures still needed'), el('ul', { class: 'ds-body-sm' }, ...bc.missing.map((m) => el('li', {}, m)))) : null,
     caseForm(intel, o));
 }
 
@@ -232,7 +268,7 @@ function caseView(intel, o) {
 function caseForm(intel, o) {
   const id = intel.discovery.id;
   const fields = [
-    ['implementationCostGBP', 'Implementation cost (£, one-off)', 'A quote or budget you have. Leave blank if unknown: payback stays uncalculated.'],
+    ['implementationCostGBP', 'Cost to build it (£, one-off)', 'A quote or budget you have. Leave blank if unknown: payback stays uncalculated.'],
     ['monthlyCashSavingGBP', 'Spending you could actually reduce (£ / month)', 'Only real spend that would stop, e.g. overtime or a contractor. Explain the basis below (at least 10 characters).'],
     ['staffHoursPerCase', 'Staff hours one additional case needs', 'Used to turn recovered hours into capacity.'],
     ['revenuePerCaseGBP', 'Revenue per additional case (£)', 'Only counted if you confirm there’s demand for more cases.'],
@@ -255,20 +291,20 @@ function caseForm(intel, o) {
     try { await api(`/api/firm/discoveries/${id}/pain-points/${o.id}/corrections`, 'POST', { field, value, reason: reason.value.trim() }); location.reload(); }
     catch (err) { setMsg(m, err.message, 'error'); }
   } },
-  el('h3', { class: 'ds-h4' }, 'Add a business-case input'),
-  el('p', { class: 'ds-help' }, 'Figures you supply are labelled firm-provided and recorded with your reason. They never raise confidence that the problem exists.'),
+  el('h3', { class: 'ds-h4' }, 'Add a figure'),
+  el('p', { class: 'ds-help' }, 'Figures you add are marked “Entered by your firm” and saved with your reason. They don’t count as evidence that the problem exists.'),
   el('div', { class: 'ds-form-grid' },
-    el('div', { class: 'ds-field' }, el('label', { class: 'ds-label', for: 'op-case-field' }, 'Input'), fieldSel),
+    el('div', { class: 'ds-field' }, el('label', { class: 'ds-label', for: 'op-case-field' }, 'Figure'), fieldSel),
     el('div', { class: 'ds-field' }, el('label', { class: 'ds-label', for: valueIn.hidden ? 'op-case-demand' : 'op-case-value' }, 'Value'), valueIn, demand, help)),
   el('div', { class: 'ds-field' }, el('label', { class: 'ds-label', for: 'op-case-reason' }, 'Source or basis'), reason),
-  el('div', { class: 'ds-cluster' }, el('button', { class: 'ds-btn ds-btn--secondary', type: 'submit' }, 'Save input'), m));
+  el('div', { class: 'ds-cluster' }, el('button', { class: 'ds-btn ds-btn--secondary', type: 'submit' }, 'Save figure'), m));
   return form;
 }
 
 function actionView(o) {
   return el('div', { class: 'ds-stack' }, el('h3', { class: 'ds-h4' }, o.recommendedAction.title),
     el('ol', { class: 'ds-body-sm' }, ...o.recommendedAction.steps.map((s) => el('li', {}, s))),
-    el('p', { class: 'ds-help' }, 'A recommendation from fixed rules, not a plan. Nothing is built or confirmed as feasible until JADA engineering has reviewed it.'));
+    el('p', { class: 'ds-help' }, 'Suggested by fixed rules, not a final plan. Nothing is built, or promised as doable, until JADA’s engineers have reviewed it.'));
 }
 
 function reviewView(intel, o) {

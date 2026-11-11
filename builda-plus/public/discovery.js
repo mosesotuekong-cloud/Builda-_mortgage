@@ -3,11 +3,11 @@
 // Every figure, status and confidence shown here comes from GET /api/firm/discoveries/:id/workspace.
 
 const SOURCE_LABEL = {
-  employee_reported: ['firm-said', 'Employee-reported'], firm_provided: ['firm-said', 'Firm-provided'], measured: ['measured', 'Measured'],
-  public_record: ['public', 'Public record'], industry_knowledge: ['playbook', 'Industry knowledge'], assumption: ['assumption', 'Assumption'],
+  employee_reported: ['firm-said', 'Said by staff'], firm_provided: ['firm-said', 'Entered by your firm'], measured: ['measured', 'Measured'],
+  public_record: ['public', 'Public record'], industry_knowledge: ['playbook', 'Industry knowledge'], assumption: ['assumption', 'Working estimate'],
 };
 const REVIEW = { unreviewed: ['Not reviewed', 'neutral'], validated: ['Validated by you', 'success'], disputed: ['Disputed', 'warning'] };
-const DIMENSION_LABEL = { existence: 'The problem exists here', volume: 'How often it happens', effort: 'Time each occurrence takes', impact: 'Estimated operational impact' };
+const DIMENSION_LABEL = { existence: 'The problem exists here', volume: 'How often it happens', effort: 'How long it takes each time', impact: 'Hours that could be saved' };
 const CLASSIFICATION_SOURCE = { ai_proposed: 'Suggested by AI from what people said', playbook: 'Suggested by industry knowledge', firm_lead: 'Set by you' };
 // Kept simple: one path from firm context to findings, then Opportunities is where the firm lead decides.
 const TABS = [['', 'Overview'], ['context', 'Firm context'], ['interviews', 'Interviews'], ['findings', 'Findings']];

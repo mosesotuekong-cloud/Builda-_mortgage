@@ -25,7 +25,7 @@ export interface BusinessCase {
 
 export const BUSINESS_CASE_LABELS: Record<BusinessCaseInputKey, string> = {
   monthlyVolume: 'How often it happens (per month)', minutesPerOccurrence: 'Minutes of staff time each time', reductionPct: 'Share of that time that could be removed',
-  loadedHourlyCostGBP: 'Hourly staff cost', implementationCostGBP: 'Implementation cost', monthlyCashSavingGBP: 'Spending the firm can actually reduce (per month)',
+  loadedHourlyCostGBP: 'Hourly staff cost', implementationCostGBP: 'Cost to build it', monthlyCashSavingGBP: 'Spending the firm can actually reduce (per month)',
   staffHoursPerCase: 'Staff hours one additional case needs', revenuePerCaseGBP: 'Revenue per additional case',
 };
 
@@ -45,20 +45,20 @@ export function businessCase(i: BusinessCaseInputs): BusinessCase {
   const perCase = v('revenuePerCaseGBP');
   const revenue = additionalCases !== null && perCase !== null && i.demandConfirmed ? Math.round(additionalCases * perCase) : null;
   if (cash === null && revenue === null) {
-    missing.push('A financial return: either spending the firm can reduce, or hours per case, revenue per case and confirmed demand for more cases');
+    missing.push('A money figure: either spending you would stop (such as overtime or a planned hire), or how many more cases the saved time allows and what each one earns');
   }
   const cost = v('implementationCostGBP');
   if (cost === null) missing.push(BUSINESS_CASE_LABELS.implementationCostGBP);
 
   let payback: BusinessCase['payback'];
-  if (cost === null) payback = { months: null, reason: 'Not calculated: implementation cost is not yet known.' };
-  else if (cash === null || cash <= 0) payback = { months: null, reason: 'Not calculated: no spending that the firm can reduce has been identified. Recovered time is capacity, not cash.' };
-  else payback = { months: Math.round((cost / cash) * 10) / 10, reason: `${gbp(cost)} implementation cost ÷ ${gbp(cash)} a month of cash savings.` };
+  if (cost === null) payback = { months: null, reason: 'Not calculated: the cost to build it isn’t known yet.' };
+  else if (cash === null || cash <= 0) payback = { months: null, reason: 'Not calculated: no spending that the firm can reduce has been identified. Time saved is not money saved unless spending actually goes down.' };
+  else payback = { months: Math.round((cost / cash) * 10) / 10, reason: `${gbp(cost)} to build ÷ ${gbp(cash)} a month of money saved.` };
 
   return {
     timeRecovered: {
       monthlyHoursSpent: time.monthlyHoursSpent, monthlyHoursRecovered: time.monthlyHoursRecovered, valueAtStatedCostGBP: time.monthlyCapacityValueGBP,
-      method: 'Times a month × minutes each time ÷ 60 = hours spent; × share that could be removed = hours recovered. Valued at the firm’s stated hourly cost only to show scale: it is not a saving.',
+      method: 'Times a month × minutes each time = hours spent; × the share that could be saved = hours saved. The £ figure uses your hourly staff cost to show scale only: it is not money saved.',
     },
     cashSavings: {
       monthlyGBP: cash, basis: i.monthlyCashSavingGBP.note ?? null,
@@ -66,12 +66,12 @@ export function businessCase(i: BusinessCaseInputs): BusinessCase {
     },
     capacity: {
       additionalCasesPerMonth: additionalCases,
-      method: additionalCases === null ? 'Needs hours recovered and the firm’s own staff hours per case.' : 'Hours recovered ÷ staff hours per case, rounded down.',
+      method: additionalCases === null ? 'Needs the hours saved and how many staff hours one case takes.' : 'Hours saved ÷ staff hours per case, rounded down.',
     },
     revenue: {
       monthlyPotentialGBP: revenue,
-      method: revenue !== null ? 'Additional cases × revenue per case. Potential only: it assumes demand exists and the recovered time is used for new cases.'
-        : !i.demandConfirmed ? 'Not calculated: the firm hasn’t confirmed there is demand for more cases. Capacity does not become revenue on its own.'
+      method: revenue !== null ? 'Extra cases × revenue per case. Potential only: it assumes the demand is there and the saved time goes on new cases.'
+        : !i.demandConfirmed ? 'Not calculated: you haven’t confirmed there is demand for more cases. Spare time only becomes revenue if there are clients to fill it.'
           : 'Needs additional cases and revenue per case.',
     },
     payback,

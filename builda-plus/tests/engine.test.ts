@@ -52,8 +52,8 @@ describe('scoring', () => {
     const { ranked } = rankOpportunities([letters, chasing]);
     expect(ranked.map((r) => r.input.id)).toEqual(['document_chasing', 'suitability_admin']);
     const why = explainRanking(ranked[0]!, ranked[1]!);
-    expect(why[0]).toMatch(/^impact/);
-    expect(why.some((w) => w.startsWith('risk'))).toBe(true);
+    expect(why[0]).toMatch(/^Time saved/);
+    expect(why.some((w) => w.startsWith('Regulatory risk'))).toBe(true);
   });
   it('excludes keep-human and insufficient-evidence items', () => {
     const { ranked, excluded } = rankOpportunities([base({ id: 'a', classification: 'keep_human' }), base({ id: 'b', confidence: 'insufficient' }), base({ id: 'c' })]);

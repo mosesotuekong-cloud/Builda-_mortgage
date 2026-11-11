@@ -74,7 +74,7 @@ export const minLevel = (...ls: ConfidenceOrInsufficient[]): ConfidenceOrInsuffi
 
 function figureConfidence(records: ConfidenceInput[], field: 'monthlyVolume' | 'minutesPerOccurrence', override: number | null | undefined, label: string): DimensionAssessment {
   if (override !== undefined) {
-    return { level: override === null ? 'insufficient' : 'low', reasons: [override === null ? `${label} cleared by the firm lead` : `${label} set by the firm lead: one account, not yet corroborated by other evidence`] };
+    return { level: override === null ? 'insufficient' : 'low', reasons: [override === null ? `${label} cleared by the firm lead` : `${label} entered by the firm lead; nobody else has confirmed it yet`] };
   }
   if (records.some((r) => r.source === 'measured_baseline' && r[field] !== null)) return { level: 'very_high', reasons: [`${label} directly measured`] };
   const said = records.filter((r) => r.source === 'firm_said' && r[field] !== null);
@@ -100,13 +100,13 @@ export function assessDimensions(records: ConfidenceInput[], opts: DimensionOpti
   const volume = figureConfidence(records, 'monthlyVolume', opts.overrides?.monthlyVolume, 'Volume');
   const effort = figureConfidence(records, 'minutesPerOccurrence', opts.overrides?.minutesPerOccurrence, 'Time per occurrence');
   const base = minLevel(existence.level, volume.level, effort.level);
-  const impactReasons = [`Hours spent combine volume and time, so they are only as reliable as the weaker of the two (${base.replace('_', ' ')})`];
+  const impactReasons = [`Worked out from how often it happens and how long it takes, so it is only as certain as the less certain of the two (${base.replace('_', ' ')})`];
   let impact: ConfidenceOrInsufficient = base;
   if (opts.reductionBasis) {
     impact = minLevel(base, 'low');
     impactReasons.push(opts.reductionBasis === 'template'
-      ? 'Time that could be recovered rests on a planning assumption about how much work can be removed'
-      : 'Time that could be recovered rests on the firm lead’s estimate of how much work can be removed');
+      ? 'The share of time that could be saved is JADA’s working estimate, not yet measured at a real firm'
+      : 'The share of time that could be saved is the firm lead’s estimate');
   }
   return { existence, volume, effort, impact: { level: impact, reasons: impactReasons } };
 }

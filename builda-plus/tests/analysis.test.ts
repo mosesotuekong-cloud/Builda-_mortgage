@@ -98,7 +98,7 @@ describe('opportunity building', () => {
     expect(o!.impact.monthlyHoursRecovered).toBe(25);
     expect(o!.assumptions[0]).toMatch(/50%.*not yet measured/);
     expect(o!.twoWeek.status).toBe('blocked');
-    expect(o!.twoWeek.blockers).toEqual(['Template "Document chasing with staff-approved reminders" is not yet tested']);
+    expect(o!.twoWeek.blockers).toEqual(['JADA’s design "Document chasing with staff-approved reminders" hasn’t been used at a firm yet']);
   });
   it('applies firm-lead overrides and leaves recovery unknown without a template or reduction', () => {
     const [a, b] = buildOpportunities([

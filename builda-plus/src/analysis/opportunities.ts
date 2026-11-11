@@ -47,11 +47,11 @@ const ENGINEERING_CHECKS = [
 
 export function precheckTwoWeek(pp: PainPointForScoring, template: AutomationTemplate | null): TwoWeekPrecheck {
   const blockers: string[] = [];
-  if (pp.classification !== 'automate') blockers.push(pp.classification ? `Classified "${pp.classification}", not "automate"` : 'Not yet classified');
-  if (!template) blockers.push('No JADA automation template');
-  else if (!template.tested) blockers.push(`Template "${template.name}" is not yet tested`);
-  if (pp.requiresComplianceReview) blockers.push('Compliance questions must be resolved first (regulated stage)');
-  if (template && !template.humanApprovalBuiltIn) blockers.push('Template lacks a human approval step');
+  if (pp.classification !== 'automate') blockers.push(pp.classification ? `Two-week builds are for automation; this is classified as "${pp.classification}"` : 'Not yet classified');
+  if (!template) blockers.push('JADA has no ready-made design for this yet');
+  else if (!template.tested) blockers.push(`JADA’s design "${template.name}" hasn’t been used at a firm yet`);
+  if (pp.requiresComplianceReview) blockers.push('Regulated advice questions must be settled first');
+  if (template && !template.humanApprovalBuiltIn) blockers.push('JADA’s design has no step where a person approves');
   return { status: blockers.length ? 'blocked' : 'provisional', blockers, toConfirmInEngineeringReview: ENGINEERING_CHECKS };
 }
 

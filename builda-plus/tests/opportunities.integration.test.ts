@@ -26,10 +26,10 @@ describe('business case: four kinds of value, nothing invented', () => {
     expect(bc.timeRecovered).toMatchObject({ monthlyHoursSpent: 50, monthlyHoursRecovered: 25, valueAtStatedCostGBP: 750 });
     expect(bc.cashSavings.monthlyGBP).toBeNull();
     expect(bc.payback.months).toBeNull();
-    expect(bc.payback.reason).toMatch(/capacity, not cash/);
+    expect(bc.payback.reason).toMatch(/Time saved is not money saved/);
   });
   it('payback is only calculated when implementation cost and a cash saving are both known', () => {
-    expect(businessCase(inputs({ monthlyCashSavingGBP: given(400) })).payback).toMatchObject({ months: null, reason: expect.stringMatching(/cost is not yet known/) });
+    expect(businessCase(inputs({ monthlyCashSavingGBP: given(400) })).payback).toMatchObject({ months: null, reason: expect.stringMatching(/isn’t known yet/) });
     expect(businessCase(inputs({ monthlyCashSavingGBP: given(400), implementationCostGBP: given(6000) })).payback.months).toBe(15);
   });
   it('revenue needs confirmed demand; capacity needs the firm’s own hours per case', () => {
@@ -42,7 +42,7 @@ describe('business case: four kinds of value, nothing invented', () => {
   it('lists missing inputs instead of filling them in, and keeps each source', () => {
     const bc = businessCase(inputs({ monthlyVolume: given(null) }));
     expect(bc.timeRecovered.monthlyHoursRecovered).toBeNull();
-    expect(bc.missing).toEqual(expect.arrayContaining(['How often it happens (per month)', 'Implementation cost']));
+    expect(bc.missing).toEqual(expect.arrayContaining(['How often it happens (per month)', 'Cost to build it']));
     expect(bc.inputs.reductionPct.source).toBe('assumption');
     expect(bc.complete).toBe(false);
   });
@@ -155,7 +155,7 @@ describe.skipIf(!APP || !ADMIN)('opportunity intelligence (Phase 4)', () => {
     expect(o.priorityRank).toBe(1);
     expect(o.band).not.toBeNull();
     expect(o.status).toBe('ready_for_review');
-    expect(o.recommendedAction.title).toMatch(/specification/i);
+    expect(o.recommendedAction.title).toMatch(/what to build/i);
     expect(o.assessment.risks.some((r: string) => /^Control:/.test(r))).toBe(true);
     expect(o.assessment.dependencies.some((d: string) => /Outlook/.test(d))).toBe(true);
   });
@@ -198,8 +198,8 @@ describe.skipIf(!APP || !ADMIN)('opportunity intelligence (Phase 4)', () => {
     const o = await opp('document_chasing');
     expect(o.businessCase.timeRecovered.monthlyHoursSpent).toBeCloseTo(33.3, 1);
     expect(o.businessCase.payback.months).toBeNull();
-    expect(o.businessCase.payback.reason).toMatch(/implementation cost is not yet known/);
-    expect(o.businessCase.missing).toContain('Implementation cost');
+    expect(o.businessCase.payback.reason).toMatch(/cost to build it isn’t known yet/);
+    expect(o.businessCase.missing).toContain('Cost to build it');
     expect(o.businessCase.inputs.reductionPct.source).toBe('assumption');
     expect(o.businessCase.inputs.monthlyVolume).toMatchObject({ source: 'employee_reported', note: 'middle of 3 accounts' });
   });

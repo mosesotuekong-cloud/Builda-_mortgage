@@ -154,7 +154,7 @@ describe.skipIf(!APP || !ADMIN)('end to end over HTTP', () => {
     expect(p.disagreements[0].values.map((v: any) => v.role)).toEqual(['Case manager', 'Firm owner / Managing Director', 'Mortgage adviser']);
     expect(pb.topThree).toEqual([p.id]);
     expect(p.impact.monthlyHoursRecovered).toBe(15);               // 150 × 12 min (median) × 50% template assumption
-    expect(p.twoWeek.blockers).toContain('Template "Document chasing with staff-approved reminders" is not yet tested');
+    expect(p.twoWeek.blockers).toContain('JADA’s design "Document chasing with staff-approved reminders" hasn’t been used at a firm yet');
     const body = JSON.stringify(pb);
     for (const secret of ['Cara', 'Adam', 'Lena', 'P1', 'P2', 'P3', '@t.test']) expect(body).not.toContain(secret);
   });
