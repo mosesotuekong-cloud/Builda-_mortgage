@@ -5,7 +5,7 @@
 
 const OPP_STATUS = {
   keep_human: ['Keep human', 'neutral'], needs_classification: ['Needs your classification', 'warning'], needs_evidence: ['Needs evidence', 'warning'], compliance_review: ['Compliance review first', 'warning'],
-  awaiting_validation: ['Awaiting your validation', 'warning'], ready_for_review: ['Ready for your decision', 'info'], challenged: ['Challenged', 'warning'],
+  awaiting_validation: ['Waiting for you to confirm', 'warning'], ready_for_review: ['Ready for your decision', 'info'], challenged: ['Challenged', 'warning'],
   approved: ['Approved', 'success'], rejected: ['Rejected', 'neutral'], sent_to_engineering: ['With JADA engineering', 'success'],
 };
 const BAND = { High: ['High', 'success'], Medium: ['Medium', 'info'], Low: ['Low', 'neutral'] };
@@ -39,15 +39,12 @@ async function opportunitiesPage(ws, discoveryId, oppId) {
 function dashboard(ws, intel, picker) {
   const id = intel.discovery.id, s = intel.summary, list = intel.opportunities;
   const head = pageHeader('Opportunities', FEATURES.laterStages
-    ? 'What discovery found, classified and prioritised by fixed rules. Approve the ones that should go to JADA engineering review.'
-    : 'What discovery found, classified and prioritised by fixed rules. Approve the ones that matter most to your firm.');
+    ? 'The problems your interviews found, ranked by what they cost your firm and how strong the evidence is. Approve the ones that should go to JADA’s engineers.'
+    : 'The problems your interviews found, ranked by what they cost your firm and how strong the evidence is. Approve the ones you want to act on.');
   if (!list.length) return [head, picker, empty('No opportunities yet', 'Analysis didn’t produce any findings for this discovery. Check the interviews and run the analysis again.', linkBtn(`/app/discovery/${id}`, 'Open discovery', 'primary'), 'opportunities'), hypothesesSection(intel)];
-  const stats = el('dl', { class: 'ws-stats op-stats' }, ...[
-    [s.total, 'Opportunities'], [s.prioritised, 'Prioritised'], [s.readyForReview, 'Ready for your decision'],
-    [s.needsEvidence + s.needsClassification + s.complianceReview, 'Held back'], [s.approved, 'Approved'],
-  ].map(([v, l]) => el('div', { class: 'ws-stat' }, el('dt', { class: 'ws-stat__label' }, l), el('dd', { class: 'ws-stat__value' }, String(v)))));
-  const byClass = el('p', { class: 'ds-cluster op-classes' }, ...['overhaul', 'fix', 'automate', 'keep_human'].map((c) => el('span', { class: 'ds-cluster' }, classification(c), el('span', { class: 'ws-subtle' }, String(s.byClassification[c])))),
-    s.byClassification.unclassified ? el('span', { class: 'ws-subtle' }, `${s.byClassification.unclassified} not yet classified`) : null);
+  const stats = totals(list, s);
+  const byClass = el('p', { class: 'ds-cluster op-classes' }, el('span', { class: 'ws-subtle' }, 'Suggested approach:'), ...['overhaul', 'fix', 'automate', 'keep_human'].map((c) => el('span', { class: 'ds-cluster' }, classification(c), el('span', { class: 'ws-subtle' }, String(s.byClassification[c])))),
+    s.byClassification.unclassified ? el('span', { class: 'ws-subtle' }, `${s.byClassification.unclassified} not yet decided`) : null);
 
   // Filters (client-side over the loaded list; state kept in the query string).
   const q = new URLSearchParams(location.search);
@@ -55,10 +52,10 @@ function dashboard(ws, intel, picker) {
     el('select', { class: 'ds-select', id: `op-f-${name}`, name }, el('option', { value: '' }, 'All'), ...opts.map(([v, l]) => el('option', { value: v, selected: q.get(name) === v }, l))));
   const stages = [...new Map(list.map((o) => [o.stageId, o.stageName])).entries()];
   const filters = el('form', { class: 'op-filters', role: 'search', 'aria-label': 'Filter opportunities' },
-    sel('stage', 'Stage', stages), sel('classification', 'Classification', Object.entries(CLASSIFICATION).map(([k, [, l]]) => [k, l])),
+    sel('stage', 'Stage', stages), sel('classification', 'Approach', Object.entries(CLASSIFICATION).map(([k, [, l]]) => [k, l])),
     sel('priority', 'Priority', [['High', 'High'], ['Medium', 'Medium'], ['Low', 'Low'], ['unranked', 'Not ranked']]),
-    sel('confidence', 'Confidence', Object.entries(CONFIDENCE).map(([k, [, l]]) => [k, l])),
-    sel('status', 'Review status', Object.entries(OPP_STATUS).filter(([k]) => FEATURES.laterStages || k !== 'sent_to_engineering').map(([k, [l]]) => [k, l])));
+    sel('confidence', 'How sure', Object.entries(CONFIDENCE).map(([k, [, l]]) => [k, l])),
+    sel('status', 'Status', Object.entries(OPP_STATUS).filter(([k]) => FEATURES.laterStages || k !== 'sent_to_engineering').map(([k, [l]]) => [k, l])));
   const results = el('div', {});
   const apply = () => {
     const f = Object.fromEntries([...new FormData(filters)].filter(([, v]) => v));
@@ -77,6 +74,26 @@ function dashboard(ws, intel, picker) {
     el('div', { class: 'ws-section', id: 'report' }, el('details', { class: 'op-details', open: !FEATURES.laterStages || !(ws.discoveries.find((d) => d.id === id) || {}).reportedAt },
       el('summary', {}, FEATURES.laterStages ? 'Create the discovery report' : 'Your discovery report'), el('div', { class: 'op-details__body', 'data-load': id })))]
     .map((n) => (n && n.querySelector && n.querySelector('[data-load]') ? lazyDecisions(n, ws) : n));
+}
+
+// The business totals across every opportunity that has figures, with how many that is, so a total built
+// from a few opportunities never reads as the whole picture.
+function totals(list, s) {
+  const sized = list.filter((o) => o.classification !== 'keep_human' && o.businessCase && o.businessCase.timeRecovered.monthlyHoursSpent !== null);
+  const sum = (f) => sized.reduce((n, o) => n + (f(o.businessCase.timeRecovered) || 0), 0);
+  const spent = sum((t) => t.monthlyHoursSpent), freed = sum((t) => t.monthlyHoursRecovered);
+  const priced = sized.filter((o) => o.businessCase.timeRecovered.valueAtStatedCostGBP !== null);
+  const yearly = priced.reduce((n, o) => n + o.businessCase.timeRecovered.valueAtStatedCostGBP * 12, 0);
+  const of = `${sized.length} of ${s.total}`;
+  const stat = (label, value, note) => el('div', { class: 'ws-stat' }, el('dt', { class: 'ws-stat__label' }, label), el('dd', { class: 'ws-stat__value' }, value), note ? el('dd', { class: 'ws-subtle op-stat__note' }, note) : null);
+  return el('div', { class: 'ds-stack' },
+    el('dl', { class: 'ws-stats op-stats' },
+      stat('Staff time lost a month', sized.length ? `${num(spent)} hours` : 'Not known yet', sized.length ? `from the ${of} problems with figures` : 'No figures given yet'),
+      stat('Could be freed up a month', sized.length ? `${num(freed)} hours` : 'Not known yet', priced.length ? `≈ ${gbp(yearly)} a year in staff time` : null),
+      stat('Problems found', String(s.total), `${s.prioritised} ranked, ${s.total - s.prioritised} not ranked yet`),
+      stat('Waiting for your decision', String(s.readyForReview), null),
+      stat('Approved', String(s.approved), null)),
+    sized.length < s.total ? el('p', { class: 'ds-help' }, `Totals cover only the ${of} problems where someone has said how often it happens and how long it takes. The rest show “Not given yet” below.`) : null);
 }
 
 // The report and bulk-approval controls from Phase 2, loaded only when opened.
@@ -99,40 +116,49 @@ function resultsView(intel, shown, filtered) {
   if (!shown.length) return [empty('Nothing matches these filters', 'Clear a filter to see more opportunities.', null, 'opportunities')];
   const ranked = shown.filter((o) => o.priorityRank !== null), held = shown.filter((o) => o.priorityRank === null);
   const out = [];
-  out.push(section('Priorities', el('span', { class: 'ws-subtle' }, filtered ? `${ranked.length} shown` : null), ranked.length ? el('div', { class: 'ds-table-wrap' }, el('table', { class: 'ds-table op-table' },
+  const notGiven = () => el('span', { class: 'ws-subtle' }, 'Not given yet');
+  const hours = (h) => (h === null || h === undefined ? notGiven() : `${num(h)} h`);
+  out.push(section('Priorities', el('span', { class: 'ws-subtle' }, filtered ? `${ranked.length} shown` : 'Highest first'), ranked.length ? el('div', { class: 'ds-table-wrap' }, el('table', { class: 'ds-table op-table' },
     el('caption', { class: 'ds-visually-hidden' }, 'Prioritised opportunities'),
-    el('thead', {}, el('tr', {}, el('th', { scope: 'col', class: 'ds-table__num' }, 'Rank'), ...['Opportunity', 'Approach', 'Priority', 'Confidence it exists'].map((h) => el('th', { scope: 'col' }, h)),
-      el('th', { scope: 'col', class: 'ds-table__num' }, 'Hours recovered / month'), el('th', { scope: 'col' }, 'Status'))),
-    el('tbody', {}, ...ranked.map((o) => el('tr', {},
-      el('td', { class: 'ds-table__num' }, String(o.priorityRank)),
-      el('th', { scope: 'row' }, el('a', { href: oUrl(id, o.id) }, o.title), el('div', { class: 'ws-subtle' }, o.stageName)),
-      el('td', {}, classification(o.classification)),
-      el('td', {}, band(o.band), el('div', { class: 'ws-subtle' }, `score ${o.score}`)),
-      el('td', {}, confidence(o.evidence.dimensions.existence.level)),
-      el('td', { class: 'ds-table__num' }, num(o.businessCase && o.businessCase.timeRecovered.monthlyHoursRecovered)),
-      el('td', {}, oppStatus(o.status))))))) : el('p', { class: 'ds-muted ds-body-sm' }, 'No opportunity can be prioritised yet. Each one below says what’s holding it back.')));
-  if (held.length) out.push(section('Not prioritised', el('span', { class: 'ws-subtle' }, 'Impact never outweighs missing evidence or a regulatory constraint'),
+    el('thead', {}, el('tr', {}, el('th', { scope: 'col', class: 'ds-table__num' }, 'Rank'), ...['Opportunity', 'Priority'].map((h) => el('th', { scope: 'col' }, h)),
+      el('th', { scope: 'col', class: 'ds-table__num' }, 'Hours lost a month'), el('th', { scope: 'col', class: 'ds-table__num' }, 'Could free up'),
+      el('th', { scope: 'col' }, 'How sure'), el('th', { scope: 'col' }, 'Status'))),
+    el('tbody', {}, ...ranked.map((o) => {
+      const t = o.businessCase ? o.businessCase.timeRecovered : null;
+      return el('tr', {},
+        el('td', { class: 'ds-table__num' }, String(o.priorityRank)),
+        el('th', { scope: 'row', class: 'op-table__title' }, el('a', { href: oUrl(id, o.id) }, o.title), el('div', { class: 'ds-cluster op-table__meta' }, classification(o.classification), el('span', { class: 'ws-subtle' }, o.stageName))),
+        el('td', {}, band(o.band)),
+        el('td', { class: 'ds-table__num' }, hours(t && t.monthlyHoursSpent)),
+        el('td', { class: 'ds-table__num' }, t && t.monthlyHoursSpent !== null && t.monthlyHoursRecovered === null ? el('span', { class: 'ws-subtle' }, 'Not estimated yet') : hours(t && t.monthlyHoursRecovered),
+          t && t.valueAtStatedCostGBP !== null ? el('div', { class: 'ws-subtle' }, `≈ ${gbp(t.valueAtStatedCostGBP * 12)} a year`) : null),
+        el('td', {}, confidence(o.evidence.dimensions.existence.level)),
+        el('td', {}, oppStatus(o.status)));
+    })))) : el('p', { class: 'ds-muted ds-body-sm' }, 'Nothing can be ranked yet. Each one below says what’s holding it back.')));
+  if (held.length) out.push(section('Not ranked yet', el('span', { class: 'ws-subtle' }, 'However large the problem, these stay out of the ranking until the issue shown is sorted'),
     el('ul', { class: 'ws-list op-held' }, ...held.map((o) => el('li', {},
       el('span', { class: 'ds-stack op-held__main' }, el('span', { class: 'ds-cluster' }, el('a', { href: oUrl(id, o.id) }, o.title), classification(o.classification), o.status === 'keep_human' ? null : oppStatus(o.status)),
         el('span', { class: 'ws-subtle' }, `${o.stageName} · ${(o.gates.filter((g) => g.blocksPriority).map((g) => g.label).join('; ')) || (o.status === 'rejected' ? 'Rejected by you' : o.needsReassessment || 'Not scored')}`)))))));
-  out.push(el('p', { class: 'ds-help ws-section' }, 'Hours are operational capacity from your team’s estimates, not a cash saving. “Unknown” means a figure is missing; BuildA+ never fills it in.'));
+  out.push(el('p', { class: 'ds-help ws-section' }, 'Hours come from your team’s own estimates. Hours freed up are spare capacity, not money saved; the £ figure is that time at your hourly staff cost. “Not given yet” means nobody has said how often it happens or how long it takes; “Not estimated yet” means nobody has estimated how much of that time could be saved. BuildA+ never makes a figure up: add one on the opportunity, or ask in a follow-up interview.'));
   return out;
 }
 
 function hypothesesSection(intel) {
-  return section('Industry hypotheses', el('span', { class: 'ws-subtle' }, 'Not ranked'), el('div', { class: 'ds-stack' },
-    el('p', { class: 'ds-help' }, 'Common problems at mortgage brokerages that didn’t come up in your interviews. They’re not findings about your firm and are never prioritised. If one sounds familiar, ask about it in a follow-up interview.'),
+  return section('Common problems we didn’t hear about', el('span', { class: 'ws-subtle' }, 'Not about your firm, not ranked'), el('div', { class: 'ds-stack' },
+    el('p', { class: 'ds-help' }, 'Problems that are common at mortgage firms but didn’t come up in your interviews. They aren’t findings about your firm. If one sounds familiar, ask about it in a follow-up interview.'),
     intel.hypotheses.length ? el('ul', { class: 'ws-list' }, ...intel.hypotheses.map((h) => el('li', {}, el('span', { class: 'ds-cluster' }, sourceBadge('industry_knowledge'), h.title), el('span', { class: 'ws-subtle' }, h.stageName))))
-      : el('p', { class: 'ds-muted ds-body-sm' }, 'None outstanding: every common problem in the playbook was either raised or doesn’t apply.')));
+      : el('p', { class: 'ds-muted ds-body-sm' }, 'None: every common problem JADA knows of either came up or doesn’t apply.')));
 }
 
 function methodSection(intel) {
   const w = intel.scoring.weights;
-  return section('How priorities are set', null, el('details', { class: 'op-details' }, el('summary', {}, `Scoring ${intel.scoring.version}: fixed rules, no AI`),
+  const PLAIN = { impact: 'time saved', volume: 'how often it happens', feasibility: 'readiness to build', complexity: 'build effort', risk: 'regulatory risk', confidence: 'strength of evidence' };
+  return section('How the ranking works', null, el('details', { class: 'op-details' }, el('summary', {}, 'Fixed rules, no AI'),
     el('div', { class: 'op-details__body ds-stack ds-body-sm' },
-      el('p', {}, `Each scored opportunity gets a 0–100 score from six dimensions: ${Object.entries(w).map(([k, v]) => `${k} ${Math.round(v * 100)}%`).join(', ')}. High is ${intel.scoring.bands.high} or more; medium ${intel.scoring.bands.medium} or more.`),
-      el('p', {}, 'Value, feasibility, confidence and risk are shown separately on each opportunity, so a large estimate can’t hide weak evidence or high risk.'),
-      el('p', {}, 'Some things stop an opportunity being prioritised at all, however large its impact: no firm-specific evidence, work at a regulated stage that needs compliance review, and anything classified keep human.'))));
+      el('p', {}, `Each opportunity gets a score out of 100 from six things, weighted: ${Object.entries(w).map(([k, v]) => `${PLAIN[k] || k} ${Math.round(v * 100)}%`).join(', ')}. High priority is ${intel.scoring.bands.high} or more; medium is ${intel.scoring.bands.medium} or more.`),
+      el('p', {}, 'Each opportunity’s page shows value, ease of building, strength of evidence and regulatory safety separately, so a big estimate can’t hide weak evidence or regulatory risk.'),
+      el('p', {}, 'Some things keep an opportunity out of the ranking, however large it is: nobody at your firm has described it, it involves regulated advice and needs a compliance review, or it is work best left with people.'),
+      el('p', { class: 'ws-subtle' }, `Rules version: ${intel.scoring.version}`))));
 }
 
 /* ============================================================ detail */

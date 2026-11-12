@@ -194,7 +194,11 @@
 .dw-card .ds-meta { grid-template-columns: minmax(7.5rem, 42%) minmax(0, 1fr); }
 
 /* ============================================================ opportunities (Phase 4) */
-.op-stats { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.op-stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.op-stat__note { margin: 2px 0 0; font-size: var(--ds-text-sm); }
+.op-stats .ws-stat { align-content: start; }
+.op-table__title { min-width: 16rem; }
+.op-table__meta { margin-top: var(--ds-space-1); gap: var(--ds-space-2); font-weight: normal; }
 .op-classes { margin-top: var(--ds-space-4); gap: var(--ds-space-2) var(--ds-space-5); }
 .op-filters { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--ds-space-3); margin-top: var(--ds-space-6); padding: var(--ds-space-4); border: 1px solid var(--ds-border); border-radius: var(--ds-radius-lg); background: var(--ds-surface); }
 .op-held > li { align-items: flex-start; }
