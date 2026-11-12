@@ -26,7 +26,7 @@ Needs Node.js 20+ and PostgreSQL 14+.
     npm install
     cp .env.example .env            # fill in the values; comments must be on their own lines
     npm run migrate                 # creates/updates the database and sets the app's DB password
-    npm run setup-demo              # once: creates the JADA team (Jo, Kim, Ravi, Sam) for sign-in
+    npm run setup-demo              # once: creates the JADA team (Jo, Kim, Ravi, Sam); they sign in at /signin?team=jada
     npm start                       # open http://localhost:3000 (landing page; sign in at /signin)
 
 The public landing page is at `/`; the shared design system is `public/design-system.css`, with a

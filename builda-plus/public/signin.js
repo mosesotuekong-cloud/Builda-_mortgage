@@ -94,7 +94,9 @@ async function accountsStep() {
   };
 
   const firms = accounts.filter((a) => a.kind === 'firm_lead');
-  const team = accounts.filter((a) => a.kind === 'jada');
+  // JADA staff aren't listed for visitors: their accounts open only from /signin?team=jada.
+  const showTeam = new URLSearchParams(location.search).get('team') === 'jada';
+  const team = showTeam ? accounts.filter((a) => a.kind === 'jada') : [];
   const firmList = firms.length ? el('div', { class: 'si-accounts' }, ...firms.map((f) => account(f.orgName || 'Firm', f.name, f.userId, false))) : el('p', { class: 'si-empty' }, 'No firms yet.');
   // No JADA accounts yet: the section is left out rather than shown empty.
   const teamList = el('div', { class: 'si-accounts' }, ...team.map((t) => account(t.name, t.roles.map((r) => ROLE[r] || r).join(', ') || 'JADA team', t.userId, true)));
