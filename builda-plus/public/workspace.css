@@ -274,3 +274,50 @@
 .ws-nextslot { margin-left: auto; }
 .ws-nextslot:empty { display: none; }
 .ws-form__bar .ws-nextstep { margin-top: 0; padding: var(--ds-space-2) var(--ds-space-3); }
+
+/* AI agent names (from JADA's agent catalogue) on opportunities. */
+.op-agent { display: inline-flex; align-items: center; font-size: var(--ds-text-xs, .78rem); font-weight: 700; color: var(--ds-accent-text); background: var(--ds-accent-soft); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+.op-agent-line { margin: var(--ds-space-1, 4px) 0 var(--ds-space-3, 12px); max-width: 60rem; }
+
+/* Setup by chat: the conversation, with what has been filled in so far beside it. Both boxes share one
+   height, so their tops and bottoms line up; each scrolls inside itself. */
+.sc { display: grid; grid-template-columns: minmax(0, 1fr) 24rem; gap: var(--ds-space-5, 20px); align-items: stretch;
+  height: min(72vh, 46rem); margin-top: var(--ds-space-4, 16px); }
+.sc-chat { display: grid; grid-template-rows: minmax(0, 1fr) auto; min-height: 0; padding: 0; overflow: hidden; }
+.sc-log { overflow-y: auto; padding: var(--ds-space-5, 20px); display: flex; flex-direction: column; gap: var(--ds-space-4, 16px); }
+.sc-msg p { margin: 0 0 .5em; } .sc-msg p:last-child { margin: 0; }
+.sc-msg--assistant { max-width: 40rem; }
+.sc-msg--user { align-self: flex-end; max-width: 32rem; background: var(--ds-accent-soft); color: var(--ds-accent-text); padding: 10px 14px; border-radius: 12px 12px 2px 12px; white-space: pre-wrap; }
+.sc-thinking { margin: 0; font-style: italic; }
+.sc-form { border-top: 1px solid var(--ds-border, #d9dee3); padding: var(--ds-space-3, 12px) var(--ds-space-5, 20px); display: grid; gap: 8px; }
+.sc-input { min-height: 3rem; resize: vertical; }
+.sc-form__bar { display: flex; gap: 12px; align-items: center; }
+.sc-form__bar .ds-error { margin: 0; }
+.sc-got { display: flex; flex-direction: column; min-height: 0; padding: var(--ds-space-5, 20px); }
+.sc-got h2 { margin: 0 0 4px; }
+.sc-got__list { flex: 1; min-height: 0; overflow-y: auto; margin: var(--ds-space-3, 12px) 0 0; font-size: .92rem; }
+.sc-got__row { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--ds-border, #d9dee3); }
+.sc-got__row:last-child { border-bottom: 0; }
+.sc-got__row dt { color: var(--ds-text-muted, #56657a); }
+.sc-got__row dd { margin: 0; overflow-wrap: break-word; }
+.sc-got__empty { color: var(--ds-text-muted, #56657a); }
+.sc-got__skipped { color: var(--ds-text-muted, #56657a); font-style: italic; }
+.sc-got__actions { padding-top: var(--ds-space-3, 12px); border-top: 1px solid var(--ds-border, #d9dee3); }
+@media (max-width: 1100px) { .sc { grid-template-columns: minmax(0, 1fr) 20rem; } .sc-got__row { grid-template-columns: 1fr; gap: 2px; } }
+@media (max-width: 860px) { .sc { grid-template-columns: minmax(0, 1fr); height: auto; } .sc-chat { height: 60vh; } .sc-got__list { overflow: visible; } }
+
+/* The setup-by-chat offer above the profile form. */
+.sc-offer { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-5, 20px); margin: var(--ds-space-4, 16px) 0 var(--ds-space-5, 20px);
+  padding: var(--ds-space-5, 20px) var(--ds-space-6, 24px); background: var(--ds-accent-soft); border: 1px solid var(--ds-accent); border-radius: var(--ds-radius-lg, 12px); }
+.sc-offer__title { margin: 0; font-size: 1.15rem; font-weight: 700; color: var(--ds-accent-text); }
+.sc-offer__body { margin: 4px 0 0; max-width: 46rem; color: var(--ds-accent-text); }
+.sc-offer .ds-btn { flex: 0 0 auto; }
+.sc-offer--slim { padding: var(--ds-space-3, 12px) var(--ds-space-5, 20px); }
+.sc-offer--slim .sc-offer__title { font-size: 1rem; }
+@media (max-width: 640px) { .sc-offer { flex-direction: column; align-items: flex-start; } }
+
+/* Firm details: extra roles, one row each (role, how many, remove). */
+.pf-roles { display: grid; gap: 8px; margin: 8px 0 12px; max-width: 40rem; }
+.pf-roles__row { display: grid; grid-template-columns: minmax(0, 1fr) 8rem auto; gap: 8px; align-items: center; }
+.pf-roles__row input[aria-invalid="true"] { border-color: var(--ds-danger, #b42318); }
+@media (max-width: 560px) { .pf-roles__row { grid-template-columns: minmax(0, 1fr) 5.5rem auto; } }

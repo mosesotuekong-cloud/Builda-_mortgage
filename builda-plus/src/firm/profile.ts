@@ -35,6 +35,10 @@ export const FirmProfileSchema = z.object({
   businessFocus: z.array(z.enum(BUSINESS_FOCUS)).max(BUSINESS_FOCUS.length).optional(),
   operatingModel: z.enum(OPERATING_MODELS).nullable().optional(),
   technology: z.array(TechnologySchema).max(50).optional(),
+  // Roles beyond advisers, case managers and administrators (paraplanners, protection specialists...).
+  otherRoles: z.array(z.object({ name: z.string().trim().min(1).max(60), count: z.number().int().min(0).max(500) })).max(10).optional(),
+  // Anything else about the firm that doesn't fit a field. Kept on the profile and in the report; not sent to the interviewer.
+  notes: z.string().max(2000).optional(),
 }).transform((p) => (p.technology
   // Once an inventory exists it is the source of the systems list used by reports and implementation packs.
   ? { ...p, systems: [...new Set(p.technology.map((t) => t.name))].slice(0, 50) }

@@ -17,7 +17,8 @@ async function api(path, body) {
 
 // Withdrawal (R3): a confirmation first, because it can't be undone.
 function withdrawLink(back) {
-  return el('button', { class: 'link-btn', type: 'button', onclick: () => renderWithdraw(back) }, 'Withdraw my interview');
+  return el('button', { class: 'link-btn', type: 'button', 'aria-label': 'Withdraw my interview', onclick: () => renderWithdraw(back) },
+    el('span', { class: 'link-btn__long' }, 'Withdraw my interview'), el('span', { class: 'link-btn__short' }, 'Withdraw'));
 }
 function renderWithdraw(back) {
   const error = el('p', { class: 'notice', role: 'alert', hidden: '' });
@@ -72,7 +73,20 @@ function renderInterview(firmName, session) {
     conversation.append(n);
     conversation.scrollTop = conversation.scrollHeight; // scroll the conversation, not the page
   };
-  const renderStages = (stages) => journey.replaceChildren(...stages.map((s) => el('li', { class: s.state, ...(s.state === 'current' ? { 'aria-current': 'step' } : {}) }, s.name)));
+  // Stages: a sidebar on wide screens, one tappable line ("Stage 2 of 9: Documents") on phones.
+  const stageSummary = el('summary', { class: 'stages__summary' });
+  const stages = el('details', { class: 'stages' }, stageSummary,
+    el('p', { class: 'stages__title' }, 'What we’ll cover'), journey,
+    el('p', { class: 'stages__note' }, 'Stages that aren’t part of your job are skipped. You can pause at any point.'));
+  const wide = window.matchMedia('(min-width: 900px)');
+  const fitStages = () => { stages.open = wide.matches; };
+  wide.addEventListener('change', fitStages);
+  const renderStages = (list) => {
+    journey.replaceChildren(...list.map((s) => el('li', { class: s.state, ...(s.state === 'current' ? { 'aria-current': 'step' } : {}) }, s.name)));
+    const i = list.findIndex((s) => s.state === 'current');
+    const done = list.filter((s) => s.state === 'done' || s.state === 'skipped').length;
+    stageSummary.textContent = i >= 0 ? `Stage ${i + 1} of ${list.length}: ${list[i].name}` : `${done} of ${list.length} stages covered`;
+  };
   const closeIfFinished = (s) => {
     if (s.status === 'completed' || s.status === 'escalated') {
       textarea.disabled = true; send.disabled = true; pause.hidden = true;
@@ -113,10 +127,11 @@ function renderInterview(firmName, session) {
   });
   textarea.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) composer.querySelector('form').requestSubmit(); });
 
-  root.replaceChildren(el('div', { class: 'shell' },
+  root.replaceChildren(el('div', { class: `shell${session.stages.length ? '' : ' shell--no-stages'}` },
     el('header', { class: 'top' }, el('span', { class: 'firm' }, firmName), el('span', { class: 'top__actions' }, withdrawLink(() => location.reload()), pause)),
-    session.stages.length ? journey : el('div'),
-    conversation, composer));
+    session.stages.length ? stages : null,
+    el('div', { class: 'chat' }, conversation, composer)));
+  fitStages();
   for (const m of session.messages) addMessage(m.role, m.content);
   renderStages(session.stages);
   closeIfFinished(session);

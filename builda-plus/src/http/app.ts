@@ -20,6 +20,7 @@ import { InterviewService, ConsentRequiredError, SessionClosedError, InterviewTu
 import { FirmService, ParticipantAccessService, ConsentVersionError } from '../firm/service';
 import { AnalysisService } from '../analysis/service';
 import { CONSENT_VERSION, consentSections, type ConsentConfig } from '../participant/consent';
+import type { SetupChatService } from '../firm/setupChat';
 import { signParticipant, verifyParticipant, type ParticipantPrincipal } from './tokens';
 import type { AdminService } from '../admin/service';
 import { DevCookieAuth, type FirmLeadAuth, type FirmLeadIdentity, type JadaAuth } from './auth';
@@ -43,6 +44,8 @@ export interface AppDeps {
   signin?: SigninService;
   // Plus, the in-app guide. llm null (or absent) = no AI: the browser falls back to its written answers.
   guide?: { llm: LLMProvider | null };
+  // Firm setup by chat. Absent = no AI: the page says so and the form is used instead.
+  setupChat?: SetupChatService;
   sessionSecret: string;
   consent: Omit<ConsentConfig, 'firmName'>;
   secureCookies: boolean;
@@ -234,6 +237,13 @@ export function buildApp(deps: AppDeps) {
   app.post('/api/firm/discoveries', async (req) => ({ discoveryId: await deps.firms.createDiscovery(await lead(req)) }));
   app.get<P>('/api/firm/discoveries/:id/profile', async (req) => ({ profile: await deps.firms.getProfile(await lead(req), req.params.id) }));
   app.put<P>('/api/firm/discoveries/:id/profile', async (req) => ({ profile: await deps.firms.saveProfile(await lead(req), req.params.id, req.body) }));
+  // Setup by chat: one turn. Returns the reply and the checked draft; nothing is saved until the form is.
+  app.post<P>('/api/firm/discoveries/:id/profile/chat', async (req) => {
+    const id = await lead(req);
+    await deps.firms.ensureDiscovery(id, req.params.id);
+    if (!deps.setupChat) throw Object.assign(new Error('Setting up by chat isn’t available here. Please use the form.'), { statusCode: 503 });
+    return deps.setupChat.turn(id, req.params.id, req.body);
+  });
   app.post<P>('/api/firm/discoveries/:id/participants', async (req) => deps.firms.inviteParticipant(await lead(req), req.params.id, req.body));
   app.post<P>('/api/firm/discoveries/:id/participants/:pid/link', async (req) => deps.firms.newLink(await lead(req), req.params.id, req.params.pid!));
   app.get('/api/firm/discoveries', async (req) => ({ discoveries: await deps.firms.listDiscoveries(await lead(req)) }));

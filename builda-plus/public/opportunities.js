@@ -78,6 +78,9 @@ function dashboard(ws, intel, picker) {
 
 // The business totals across every opportunity that has figures, with how many that is, so a total built
 // from a few opportunities never reads as the whole picture.
+// The named AI agent from JADA's catalogue that would do this work, if there is one.
+const agentTag = (o) => (o.agent ? el('span', { class: 'op-agent', title: o.agent.summary }, `AI agent: ${o.agent.name}`) : null);
+
 function totals(list, s) {
   const sized = list.filter((o) => o.classification !== 'keep_human' && o.businessCase && o.businessCase.timeRecovered.monthlyHoursSpent !== null);
   const sum = (f) => sized.reduce((n, o) => n + (f(o.businessCase.timeRecovered) || 0), 0);
@@ -113,7 +116,7 @@ function businessSnapshot(discoveryId, title = 'What discovery found') {
     const t = (o) => (o.businessCase ? o.businessCase.timeRecovered : {});
     body.replaceChildren(totals(list, intel.summary),
       top.length ? el('div', {}, el('h3', { class: 'ds-h4' }, 'Top priorities'), el('ol', { class: 'ws-list ov-top' }, ...top.map((o) => el('li', {},
-        el('span', { class: 'ds-stack ov-top__main' }, el('span', { class: 'ds-cluster' }, el('a', { href: oUrl(discoveryId, o.id) }, o.title), classification(o.classification)),
+        el('span', { class: 'ds-stack ov-top__main' }, el('span', { class: 'ds-cluster' }, el('a', { href: oUrl(discoveryId, o.id) }, o.title), classification(o.classification), agentTag(o)),
           el('span', { class: 'ws-subtle' }, t(o).monthlyHoursSpent === null || t(o).monthlyHoursSpent === undefined ? 'Staff time not given yet'
             : `${num(t(o).monthlyHoursSpent)} staff hours a month${t(o).monthlyHoursRecovered !== null ? ` · about ${num(t(o).monthlyHoursRecovered)} could be freed up` : ' · how much could be saved not estimated yet'}${t(o).valueAtStatedCostGBP ? ` (≈ ${gbp(t(o).valueAtStatedCostGBP * 12)} a year in staff time)` : ''}`)),
         oppStatus(o.status))))) : null,
@@ -153,7 +156,7 @@ function resultsView(intel, shown, filtered) {
       const t = o.businessCase ? o.businessCase.timeRecovered : null;
       return el('tr', {},
         el('td', { class: 'ds-table__num' }, String(o.priorityRank)),
-        el('th', { scope: 'row', class: 'op-table__title' }, el('a', { href: oUrl(id, o.id) }, o.title), el('div', { class: 'ds-cluster op-table__meta' }, classification(o.classification), el('span', { class: 'ws-subtle' }, o.stageName))),
+        el('th', { scope: 'row', class: 'op-table__title' }, el('a', { href: oUrl(id, o.id) }, o.title), el('div', { class: 'ds-cluster op-table__meta' }, classification(o.classification), agentTag(o), el('span', { class: 'ws-subtle' }, o.stageName))),
         el('td', {}, band(o.band)),
         el('td', { class: 'ds-table__num' }, hours(t && t.monthlyHoursSpent)),
         el('td', { class: 'ds-table__num' }, t && t.monthlyHoursSpent !== null && t.monthlyHoursRecovered === null ? el('span', { class: 'ws-subtle' }, 'Not estimated yet') : hours(t && t.monthlyHoursRecovered),
@@ -199,6 +202,7 @@ function opportunityDetail(intel, oppId) {
   const head = el('div', { class: 'dw-finding-head' },
     el('p', {}, el('a', { href: oUrl(id) }, '← All opportunities')),
     el('h1', { class: 'ds-h2' }, o.title),
+    o.agent ? el('p', { class: 'op-agent-line' }, el('strong', {}, o.agent.name), `: ${o.agent.summary}${o.agent.reviewed ? '' : ' (Draft description, not yet reviewed by JADA.)'}`) : null,
     el('div', { class: 'ds-cluster' }, el('span', { class: 'ws-chip' }, o.stageName), classification(o.classification), oppStatus(o.status),
       o.priorityRank ? el('span', { class: 'ws-chip' }, `Priority ${o.priorityRank} of ${intel.summary.prioritised}`) : null, o.regulated ? el('span', { class: 'ds-badge dw-badge-warn' }, 'Regulated stage') : null));
   const nav = el('nav', { class: 'op-jump', 'aria-label': 'Sections' }, ...OPP_TABS.map(([k, l]) => el('a', { href: `#op-${k}` }, l)));

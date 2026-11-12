@@ -191,7 +191,7 @@ const techCount = (p) => (p?.technology || []).length;
 function nextAction(ws, d = latestDiscovery(ws)) {
   const p = profileOf(ws);
   if (!d) return { title: 'Start your first discovery', text: 'A discovery maps how work moves through your firm. It begins with a short firm profile, then independent interviews with the people who do the work.', start: true, label: 'Start a discovery' };
-  if (!p) return { title: 'Complete your firm profile', text: 'A few details about your firm give the interviews the right context.', href: '/app/profile', label: 'Complete firm profile' };
+  if (!p) return { title: 'Complete your firm profile', text: 'A few details about your firm give the interviews the right context. Fill in the form, or answer a few questions in a chat: about five minutes.', href: '/app/profile/chat', label: 'Set up by chat' };
   if (!techCount(p)) return { title: 'Add your technology inventory', text: 'Record the systems your firm already uses, so recommendations build on what you have before suggesting anything new.', href: '/app/profile/technology', label: 'Add technology' };
   if (!d.people) return { title: 'Invite operational participants', text: 'Include two or three senior advisers and at least one case manager or administrator. Your own view is compared with your team’s.', href: `/app/discovery/${d.id}/interviews`, label: 'Invite participants' };
   if (d.completed < d.people && d.completed < 2) return { title: 'Follow up on interviews', text: `${d.completed} of ${d.people} interviews finished. Findings become more reliable as more roles take part.`, href: `/app/discovery/${d.id}`, label: 'View participants' };
@@ -312,7 +312,8 @@ function attentionList(ws) {
 function profileTabs(active) {
   return el('nav', { class: 'ws-tabs', 'aria-label': 'Firm profile sections' },
     el('a', { class: 'ws-tab', href: '/app/profile', 'aria-current': active === 'details' ? 'page' : null }, 'Firm details'),
-    el('a', { class: 'ws-tab', href: '/app/profile/technology', 'aria-current': active === 'technology' ? 'page' : null }, 'Technology inventory'));
+    el('a', { class: 'ws-tab', href: '/app/profile/technology', 'aria-current': active === 'technology' ? 'page' : null }, 'Technology inventory'),
+    el('a', { class: 'ws-tab', href: '/app/profile/chat', 'aria-current': active === 'chat' ? 'page' : null }, 'Set up by chat'));
 }
 const noDiscoveryForProfile = (ws) => empty('Your firm profile is created with your first discovery',
   'Profile details are stored with each discovery, so they reflect your firm at the time of that review. Start a discovery to add them.', startButton(ws));
@@ -364,11 +365,104 @@ function setFieldError(input, message) {
 }
 const numInput = (name, value, attrs = {}) => el('input', { class: 'ds-input', type: 'number', name, inputmode: 'numeric', min: '0', value: value === null || value === undefined ? '' : String(value), ...attrs });
 
+
+// Setup by chat: the firm lead talks the profile through. The server checks every value (numbers only if
+// they were typed), and nothing is saved here: "Review and save" opens the normal form, filled in.
+const SETUP_KEY = (ws) => `bp_setup_${ws.profile.discoveryId}`;
+const readSetup = (ws) => { try { return JSON.parse(sessionStorage.getItem(SETUP_KEY(ws)) || 'null'); } catch { return null; } };
+const writeSetup = (ws, v) => { try { if (v) sessionStorage.setItem(SETUP_KEY(ws), JSON.stringify(v)); else sessionStorage.removeItem(SETUP_KEY(ws)); } catch { /* private window: the chat still works */ } };
+const SETUP_OPENING = 'Hi. I’ll help you fill in your firm profile by asking a few questions; it takes about five minutes. Nothing is saved until you check it on the form at the end.\n\nTo start: how many mortgage advisers does the firm have, and is there a separate case team or administrators?';
+const SETUP_ROWS = [
+  ['advisers', 'Mortgage advisers'], ['caseManagers', 'Case managers'], ['administrators', 'Administrators'], ['monthlyApplications', 'Applications a month'],
+  ['typicalWeeksEnquiryToOffer', 'Weeks from enquiry to offer'], ['authorisation', 'Authorisation'], ['businessFocus', 'Business focus'], ['operatingModel', 'Operating model'],
+  ['location', 'Location'], ['website', 'Website'], ['businessStructure', 'How the firm is set up'], ['operationalChallenges', 'What slows things down'],
+  ['loadedHourlyCostGBP', 'Hourly cost of admin time (£)'], ['otherRoles', 'Other roles'], ['technology', 'Systems'], ['notes', 'Notes'],
+];
+function setupValue(k, v) {
+  if (v === undefined || v === null || (Array.isArray(v) && !v.length) || v === '') return null;
+  if (k === 'authorisation') return (AUTHORISATION.find(([x]) => x === v) || [v, v])[1];
+  if (k === 'operatingModel') return (OPERATING_MODELS.find(([x]) => x === v) || [v, v])[1];
+  if (k === 'businessFocus') return v.map((x) => (BUSINESS_FOCUS.find(([y]) => y === x) || [x, x])[1]).join(', ');
+  if (k === 'technology') return v.map((t) => t.name).join(', ');
+  if (k === 'otherRoles') return v.map((r) => `${r.name} (${r.count})`).join(', ');
+  if (k === 'loadedHourlyCostGBP') return `£${v}`;
+  return String(v);
+}
+
+// The chat option, shown above the form where nobody can miss it: a full card while the profile is
+// incomplete, a slimmer bar once it's filled in.
+function chatOffer(saved) {
+  const c = profileCompleteness(ws_profile_or_null(saved));
+  const done = c.provided === c.total;
+  return el('section', { class: `sc-offer${done ? ' sc-offer--slim' : ''}`, 'aria-label': 'Set up by chat' },
+    el('div', { class: 'sc-offer__text' },
+      el('p', { class: 'sc-offer__title' }, done ? 'Want to update it by chatting instead?' : 'Quicker: answer a few questions in a chat'),
+      done ? null : el('p', { class: 'sc-offer__body' }, 'About five minutes. The chat fills in this form from your answers, and you check everything before it’s saved. Numbers are only taken when you type them.')),
+    linkBtn('/app/profile/chat', 'Set up by chat', done ? 'secondary' : 'primary'));
+}
+const ws_profile_or_null = (p) => (p && Object.keys(p).length ? p : null);
+
+function setupChatPage(ws) {
+  const crumbs = [{ label: 'Firm profile', href: '/app/profile' }, { label: 'Set up by chat' }];
+  const head = pageHeader('Firm profile', 'Talk it through instead of filling in the form. You’ll check everything on the form before it’s saved.');
+  if (!ws.profile) return { crumbs, nodes: [head, profileTabs('chat'), noDiscoveryForProfile(ws)] };
+  const state = readSetup(ws) || { messages: [{ role: 'assistant', content: SETUP_OPENING }], draft: {} };
+  const log = el('div', { class: 'sc-log', 'aria-live': 'polite', 'aria-label': 'Conversation' });
+  const got = el('dl', { class: 'sc-got__list' });
+  const input = el('textarea', { class: 'ds-textarea sc-input', rows: '2', maxlength: '4000', 'aria-label': 'Your answer', placeholder: 'Type your answer. Rough numbers are fine; “not sure” is fine too.' });
+  const send = el('button', { class: 'ds-btn ds-btn--primary', type: 'submit' }, 'Send');
+  const err = el('p', { class: 'ds-error', role: 'alert', hidden: true });
+  const say = (m) => { log.append(el('div', { class: `sc-msg sc-msg--${m.role}` }, ...m.content.split(/\n+/).map((t) => el('p', {}, t)))); log.scrollTop = log.scrollHeight; };
+  // Each row: the value, "Left blank" if the firm lead chose to skip it, or "Not given yet".
+  const showGot = () => got.replaceChildren(...SETUP_ROWS.map(([k, l]) => {
+    const v = setupValue(k, state.draft[k]);
+    const skipped = !v && (state.skipped || []).includes(k === 'technology' ? 'systems' : k);
+    return el('div', { class: 'sc-got__row' }, el('dt', {}, l),
+      el('dd', { class: v ? '' : skipped ? 'sc-got__skipped' : 'sc-got__empty' }, v || (skipped ? 'Left blank' : 'Not given yet')));
+  }));
+  const review = el('button', { class: 'ds-btn ds-btn--secondary', type: 'button', onclick: () => { writeSetup(ws, { ...state, review: true }); location.href = '/app/profile'; } }, 'Review and save');
+  const restart = el('button', { class: 'ds-btn ds-btn--ghost', type: 'button', onclick: () => { if (confirm('Start the chat again? What it has filled in so far is cleared.')) { writeSetup(ws, null); location.reload(); } } }, 'Start again');
+  const form = el('form', { class: 'sc-form', onsubmit: async (e) => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) { input.focus(); return; }
+    err.hidden = true; send.disabled = true; input.disabled = true;
+    const mine = { role: 'user', content: text };
+    say(mine); input.value = '';
+    const thinking = el('p', { class: 'sc-thinking ws-subtle' }, 'Thinking…'); log.append(thinking);
+    try {
+      const r = await api(`/api/firm/discoveries/${ws.profile.discoveryId}/profile/chat`, 'POST', { messages: [...state.messages, mine], draft: state.draft, skipped: state.skipped || [] });
+      state.messages.push(mine, { role: 'assistant', content: r.reply }); state.draft = r.draft; state.skipped = r.skipped;
+      writeSetup(ws, state); thinking.remove(); say({ role: 'assistant', content: r.reply }); showGot();
+    } catch (ex) {
+      thinking.remove(); log.lastChild?.remove(); input.value = text;      // their message goes back in the box
+      err.textContent = ex.message; err.hidden = false;
+    } finally { send.disabled = false; input.disabled = false; input.focus(); }
+  } }, input, el('div', { class: 'sc-form__bar' }, send, err));
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); form.requestSubmit(); } });
+  state.messages.forEach(say); showGot();
+  return { crumbs, nodes: [head, profileTabs('chat'),
+    el('div', { class: 'sc' },
+      el('section', { class: 'sc-chat ds-card' }, log, form),
+      el('aside', { class: 'sc-got ds-card' }, el('h2', { class: 'ds-h4' }, 'What we’ve got so far'),
+        el('p', { class: 'ds-help' }, 'Only what you’ve told us. Numbers are taken only when you type them.'), got,
+        el('div', { class: 'ds-cluster sc-got__actions' }, review, restart)))] };
+}
+
 function profilePage(ws) {
   const crumbs = [{ label: 'Firm profile', href: '/app/profile' }, { label: 'Firm details' }];
   const head = pageHeader('Firm profile', 'Context for your discovery. Only what you provide is shown; leave anything you’re unsure of blank.');
   if (!ws.profile) return { crumbs, nodes: [head, profileTabs('details'), noDiscoveryForProfile(ws)] };
-  const p = ws.profile.value || {};
+  // Coming from the chat: the form is filled in from what the firm lead said, and nothing is saved until they press Save.
+  const fromChat = readSetup(ws)?.review ? readSetup(ws).draft : null;
+  const saved = ws.profile.value || {};
+  const p = fromChat ? {
+    ...saved, ...Object.fromEntries(Object.entries(fromChat).filter(([k]) => !['caseManagers', 'administrators'].includes(k))),
+    staffRoles: [...(fromChat.caseManagers !== undefined ? [{ role: 'case_manager', count: fromChat.caseManagers }] : (saved.staffRoles || []).filter((r) => r.role === 'case_manager')),
+      ...(fromChat.administrators !== undefined ? [{ role: 'administrator', count: fromChat.administrators }] : (saved.staffRoles || []).filter((r) => r.role === 'administrator'))],
+    technology: fromChat.technology ? [...(saved.technology || []).filter((t) => !fromChat.technology.some((c) => c.name.toLowerCase() === t.name.toLowerCase())), ...fromChat.technology] : saved.technology,
+  } : saved;
+  const chatNote = fromChat ? alertBox('info', 'Filled in from your chat', 'Check each field, change anything that’s wrong, then press Save profile. Nothing has been saved yet.') : null;
   const latest = latestDiscovery(ws);
 
   const f = {
@@ -383,7 +477,20 @@ function profilePage(ws) {
     businessStructure: el('textarea', { class: 'ds-textarea', name: 'businessStructure', maxlength: '1000', placeholder: 'e.g. one office; advisers supported by a case team of four' }, p.businessStructure || ''),
     operationalChallenges: el('textarea', { class: 'ds-textarea', name: 'operationalChallenges', maxlength: '4000' }, p.operationalChallenges || ''),
     loadedHourlyCostGBP: numInput('loadedHourlyCostGBP', p.loadedHourlyCostGBP, { step: '0.5', max: '1000', inputmode: 'decimal' }),
+    notes: el('textarea', { class: 'ds-textarea', name: 'notes', maxlength: '2000', placeholder: 'e.g. two advisers are part-time; we’re moving CRM next spring' }, p.notes || ''),
   };
+  // Other roles: as many rows as needed, each a role name and how many people.
+  const roleList = el('div', { class: 'pf-roles' });
+  const addRole = (r = { name: '', count: '' }) => {
+    const name = el('input', { class: 'ds-input', name: 'otherRoleName', value: r.name, maxlength: '60', placeholder: 'e.g. Paraplanner', 'aria-label': 'Role' });
+    const count = numInput('otherRoleCount', r.count === '' ? null : r.count, { max: '500', 'aria-label': 'How many people' });
+    const row = el('div', { class: 'pf-roles__row' }, name, count,
+      el('button', { class: 'ds-btn ds-btn--ghost ds-btn--sm', type: 'button', 'aria-label': 'Remove this role', onclick: () => { row.remove(); } }, 'Remove'));
+    roleList.append(row);
+    return name;
+  };
+  (p.otherRoles || []).forEach((r) => addRole(r));
+  const addRoleBtn = el('button', { class: 'ds-btn ds-btn--secondary ds-btn--sm', type: 'button', onclick: () => addRole().focus() }, '+ Add another role');
   const focus = BUSINESS_FOCUS.map(([v, l]) => [v, el('input', { type: 'checkbox', name: 'businessFocus', value: v, checked: (p.businessFocus || []).includes(v) }), l]);
   const models = OPERATING_MODELS.map(([v, l]) => [v, el('input', { type: 'radio', name: 'operatingModel', value: v, checked: p.operatingModel === v }), l]);
   const annual = el('p', { class: 'ds-help' });
@@ -420,7 +527,19 @@ function profilePage(ws) {
     let webOk = true;
     if (website) { try { const u = new URL(website); webOk = /\./.test(u.hostname); } catch { webOk = false; } }
     setFieldError(f.website, webOk ? '' : 'Enter a web address, for example www.example.co.uk.');
-    const invalid = [adv, cm, ad, ma, tw, hc].some((x) => !x.ok) || !webOk;
+    // Other roles: rows with a name; a count is required for each named role.
+    let rolesOk = true;
+    const otherRoles = [...roleList.querySelectorAll('.pf-roles__row')].map((row) => {
+      const [n, c] = row.querySelectorAll('input');
+      const name = n.value.trim();
+      if (!name && c.value.trim() === '') return null;
+      const v = intOrNull(c, 'otherRoleCount', { max: 500 });
+      if (!name || !v.ok || v.value === null) { rolesOk = false; setFieldError(c, ''); c.setAttribute('aria-invalid', 'true'); return null; }
+      c.setAttribute('aria-invalid', 'false');
+      return { name, count: v.value };
+    }).filter(Boolean);
+    const invalid = [adv, cm, ad, ma, tw, hc].some((x) => !x.ok) || !webOk || !rolesOk;
+    if (!rolesOk) { msg.textContent = 'Give each extra role a name and a number of people (0 or more).'; msg.dataset.kind = 'error'; return; }
     if (invalid) { msg.textContent = 'Please correct the highlighted fields.'; msg.dataset.kind = 'error'; form.querySelector('[aria-invalid="true"]')?.focus(); return; }
     const model = models.find(([, i]) => i.checked);
     const value = {
@@ -428,13 +547,15 @@ function profilePage(ws) {
       advisers: adv.value, monthlyApplications: ma.value, typicalWeeksEnquiryToOffer: tw.value, loadedHourlyCostGBP: hc.value,
       authorisation: f.authorisation.value, businessStructure: f.businessStructure.value.trim(), operationalChallenges: f.operationalChallenges.value.trim(),
       staffRoles: [{ role: 'adviser', count: adv.value }, ...(cm.value === null ? [] : [{ role: 'case_manager', count: cm.value }]), ...(ad.value === null ? [] : [{ role: 'administrator', count: ad.value }])],
-      systems: ws.profile.value?.systems || [], technology: ws.profile.value?.technology,
+      systems: p.systems || [], technology: p.technology,
       website, location: f.location.value.trim(), businessFocus: focus.filter(([, i]) => i.checked).map(([v]) => v), operatingModel: model ? model[0] : null,
+      otherRoles, notes: f.notes.value.trim(),
     };
     if (value.technology === undefined) delete value.technology;
     saveBtn.disabled = true; msg.textContent = 'Saving…';
     try {
       await saveProfile(ws, value);
+      if (fromChat) writeSetup(ws, null);          // the chat's draft is now saved for real
       f.website.value = website;
       msg.textContent = `Profile saved ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}.`; msg.dataset.kind = 'success'; showNext();
       if (goNext) { location.href = goNext; return; }   // "Save and add technology"
@@ -454,13 +575,17 @@ function profilePage(ws) {
         field('Administrators', f.administrators, { optional: true, info: 'People who handle general administration, such as new enquiries, data entry and filing, rather than progressing individual cases.' }),
         (() => { const fe = field('Mortgage applications a month', f.monthlyApplications, { optional: true, id: 'f-ma', info: 'Roughly how many mortgage applications the firm submits to lenders in a typical month, across all advisers. A rough figure is fine; BuildA+ shows it to you as an annual total so you can sense-check it.' }); fe.querySelector('.ds-field__foot').prepend(annual); return fe; })(),
         field('Typical weeks from enquiry to offer', f.typicalWeeks, { optional: true, info: 'How many weeks a typical case takes from the client’s first enquiry to the lender’s mortgage offer. A typical figure is fine; ignore unusual cases.' }))),
+    el('fieldset', { class: 'ws-fieldset' }, el('legend', {}, 'Other roles'),
+      el('p', { class: 'ds-help' }, 'Anyone else in the team, such as paraplanners, protection specialists or a compliance officer. Optional.'),
+      roleList, el('div', {}, addRoleBtn)),
     el('fieldset', { class: 'ws-fieldset' }, el('legend', {}, 'Business focus and operating model'),
       el('fieldset', { class: 'ws-checks' }, ...legendWithInfo('Mortgage business focus', 'The kinds of mortgage work that make up most of the firm’s business. Tick all that apply.'), ...focus.map(([v, i, l]) => el('label', { class: 'ds-check' }, i, l))),
       el('fieldset', { class: 'ws-checks' }, ...legendWithInfo('Operating model', 'How work is split between advisers and support staff: for example advisers backed by a case team, or advisers running their own cases from start to finish.'), ...models.map(([v, i, l]) => el('label', { class: 'ds-check' }, i, l))),
       field('How the firm is set up', f.businessStructure, { optional: true, info: 'A sentence or two on how the firm is organised: for example one office or several, who manages the case team, and whether advisers have their own support.' })),
     el('fieldset', { class: 'ws-fieldset' }, el('legend', {}, 'Operational context'),
       field('What slows things down today?', f.operationalChallenges, { optional: true, info: 'Your own view of where work gets stuck. BuildA+ compares it with what your team describe in their interviews.', help: 'In your own words. This is compared with what your team says in interviews.' }),
-      field('Approximate hourly cost of an administrator (£)', f.loadedHourlyCostGBP, { optional: true, info: 'What an hour of an administrator’s time costs the firm, including salary and employer costs if you know them. It only shows the scale of time recovered; BuildA+ never estimates it and never presents it as a saving.', help: 'Only used to put a value on time saved. BuildA+ never estimates it for you.' })),
+      field('Approximate hourly cost of whoever does the admin work (£)', f.loadedHourlyCostGBP, { optional: true, info: 'What an hour costs for the people who do the routine admin: administrators or case managers, or your advisers if they do their own admin. Include salary and employer costs if you know them. It only shows the scale of time recovered; BuildA+ never estimates it and never presents it as a saving.', help: 'Only used to put a value on time saved. BuildA+ never estimates it for you.' }),
+      field('Notes', f.notes, { optional: true, info: 'Anything else about the firm that doesn’t fit above: part-time staff, a planned system change, how a branch works. It’s kept with your profile and shown in the report.', help: 'Please leave out client names and case details.' })),
     el('fieldset', { class: 'ws-fieldset' }, el('legend', {}, 'Technology environment'),
       el('p', { class: 'ds-body-sm' }, techCount(p) ? `${plural(techCount(p), 'system')} recorded in your technology inventory.` : 'No systems recorded in your technology inventory yet.'),
       // Technology is saved with the firm details, so before the first save this button saves first (nothing typed is lost).
@@ -470,7 +595,7 @@ function profilePage(ws) {
       latest ? el('span', { class: 'ws-subtle' }, `Saved with your current discovery, started ${fmtDate(latest.createdAt)}.`) : null, nextSlot));
   f.monthlyApplications.setAttribute('aria-describedby', 'f-ma-err');
   showNext();
-  return { crumbs, nodes: [head, profileTabs('details'), form] };
+  return { crumbs, nodes: [head, profileTabs('details'), chatNote, ...(fromChat ? [] : [chatOffer(saved)]), form] };
 }
 
 /* ============================================================ technology inventory */
@@ -713,7 +838,7 @@ function accountPage() {
 
 /* ============================================================ router */
 const ROUTES = [
-  [/^\/app$/, 'overview', overview], [/^\/app\/profile$/, 'profile', profilePage], [/^\/app\/profile\/technology$/, 'profile', technologyPage],
+  [/^\/app$/, 'overview', overview], [/^\/app\/profile$/, 'profile', profilePage], [/^\/app\/profile\/technology$/, 'profile', technologyPage], [/^\/app\/profile\/chat$/, 'profile', setupChatPage],
   [/^\/app\/discovery$/, 'discovery', discoveryList], [/^\/app\/discovery\/([0-9a-f-]{36})(?:\/(context|interviews|journey|evidence|findings|review))?(?:\/([0-9a-f-]{36}))?$/, 'discovery', (ws, id, tab, sub) => discoveryWorkspacePage(ws, id, tab || '', sub || '')],
   [/^\/app\/evidence$/, 'evidence', evidencePage], [/^\/app\/opportunities(?:\/([0-9a-f-]{36})(?:\/([0-9a-f-]{36}))?)?$/, 'opportunities', opportunitiesPage],
   [/^\/app\/implementation$/, 'implementation', implementationPage], [/^\/app\/impact$/, 'impact', impactPage],

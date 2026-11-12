@@ -2,6 +2,7 @@ import { STAGES, type Classification, type StageId } from '../domain/journey';
 import { assessPriority, type DecisionValue, type PriorityAssessment } from '../engine/priority';
 import type { BusinessCase } from '../engine/businessCase';
 import { templateFor } from '../knowledge/templates';
+import { agentFor } from '../knowledge/agents';
 import { checksFor } from '../knowledge/model';
 import type { Playbook } from '../knowledge/playbook';
 import type { DiscoveryWorkspace } from './service';
@@ -16,6 +17,8 @@ export interface OpportunityAssessment {
   id: string; key: string; title: string; stageId: StageId; stageName: string; regulated: boolean; systems: string[];
   classification: Classification | null; classificationSource: string | null; classificationRationale: string | null;
   automationType: 'conventional' | 'ai_assisted' | 'not_assessed' | null;
+  // The named AI agent from JADA's catalogue that would do this work, if any (fixed rule, never AI-written).
+  agent: { id: string; name: string; summary: string; reviewed: boolean } | null;
   status: PriorityAssessment['status']; priorityRank: number | null; band: PriorityAssessment['band']; score: number | null;
   readings: PriorityAssessment['readings']; gates: PriorityAssessment['gates']; explanation: string[];
   problem: { statement: string; roles: string[]; participantCount: number; causes: string[]; improvements: string[] };
@@ -90,6 +93,7 @@ export function assessOpportunities(dw: DiscoveryWorkspace, playbook: Playbook, 
       id: f.id, key: f.key, systems, title: f.title, stageId: f.stageId as StageId, stageName: f.stageName, regulated: !!STAGES[f.stageId as StageId]?.regulatedJudgement,
       classification: f.classification, classificationSource: f.classificationSource ?? null, classificationRationale: f.classificationRationale ?? null,
       automationType: f.classification === 'automate' ? (template?.automationType ?? 'not_assessed') : null,
+      agent: ((a) => (a ? { id: a.id, name: a.name, summary: a.summary, reviewed: a.reviewed } : null))(agentFor(f.key, f.classification)),
       status: pack && pr.status === 'approved' ? 'sent_to_engineering' : pr.status, priorityRank: null, band: pr.band, score: f.score,
       readings: pr.readings, gates: pr.gates, explanation: f.explanation as string[],
       problem: {
@@ -153,7 +157,7 @@ export function handoverBrief(o: OpportunityAssessment, firmName: string) {
     evidenceSummary: { items: o.evidence.total, bySource: o.evidence.bySource, disputed: o.evidence.disputed,
       confidence: Object.fromEntries(Object.entries(o.evidence.dimensions).map(([k, v]) => [k, v.level])),
       disagreements: o.evidence.disagreements.map((d: any) => `${d.field === 'minutesPerOccurrence' ? 'Minutes each time' : 'Times a month'}: ${d.values.map((v: any) => `${v.role} ${v.value}`).join(', ')}`) },
-    classification: o.classification, automationType: o.automationType, classificationRationale: o.classificationRationale,
+    classification: o.classification, automationType: o.automationType, agent: o.agent, classificationRationale: o.classificationRationale,
     recommendedOutcome: [...o.problem.improvements, ...o.recommendedAction.steps],
     expectedImpact: bc ? { monthlyHoursSpent: bc.timeRecovered.monthlyHoursSpent, monthlyHoursRecovered: bc.timeRecovered.monthlyHoursRecovered,
       cashSavingsGBP: bc.cashSavings.monthlyGBP, additionalCasesPerMonth: bc.capacity.additionalCasesPerMonth, revenuePotentialGBP: bc.revenue.monthlyPotentialGBP,

@@ -2,6 +2,7 @@ import { ROLE_LABELS, type Classification } from '../domain/journey';
 import type { FirmProfile } from '../firm/profile';
 import type { Playback } from '../analysis/service';
 import { templateFor } from '../knowledge/templates';
+import { agentFor } from '../knowledge/agents';
 import type { Playbook } from '../knowledge/playbook';
 import { checksFor } from '../knowledge/model';
 import { COMPLEXITY_BY_KIND, type SolutionPlan } from './plans';
@@ -20,6 +21,17 @@ export interface BusinessCase {
   plan?: SolutionPlan;            // the concrete plan: what we build, how, before/after, timeline
 }
 
+// An AI agent recommendation (from the agent catalogue, matched by a fixed rule): what it does, what stays
+// with people, and the same figures and evidence rating as any other opportunity.
+export interface AgentCard {
+  name: string; summary: string; does: string[]; staysWithPeople: string[]; neverDoes: string[];
+  regulatedStep: boolean; reviewed: boolean;
+  problem: string; stage: string; priorityRank: number | null; confidence: string;
+  figures: { label: string; value: string }[]; evidence: { role: string; quote: string }[];
+  unknowns: string[]; requiresComplianceReview: boolean;
+  plan?: SolutionPlan;
+}
+
 // The market proposition: what JADA builds, by when, and how the firm will see the difference.
 export interface Offer { headline: string; lead: string; items: { title: string; deliver: string; when: string; measure: string }[]; conditions: string[] }
 
@@ -30,7 +42,8 @@ export interface ReportModel {
   profile: { label: string; value: string }[];
   participation: { role: string; completed: number; total: number }[];
   journey: { stage: string; regulated: boolean; painPoints: string[] }[];
-  businessCases: BusinessCase[];
+  agents?: AgentCard[];            // AI agents first; absent on reports made before the catalogue existed
+  businessCases: BusinessCase[];    // the other top improvements (process automation, fixes, overhauls)
   otherFindings: { title: string; stage: string; approach: string; confidence: string; note: string }[];
   crossRole: { agreements: string[]; differences: { title: string; detail: string }[]; blindSpots: string[] | null; unreportedStages: string[] };
   recommendedBuild: { title: string | null; status: 'provisional' | 'blocked' | 'none'; text: string; blockers: string[]; toConfirm: string[] };
@@ -47,7 +60,25 @@ export interface ReportModel {
 export function buildReportModel(p: { playback: Playback; profile: FirmProfile | null; firmName: string; discoveryId: string; version: number; now?: Date; playbook?: Playbook; plans?: Map<string, SolutionPlan> }): ReportModel {
   const { playback: pb, profile } = p;
   const byId = new Map(pb.painPoints.map((x) => [x.id, x]));
-  const top = pb.topThree.map((id) => byId.get(id)!).filter(Boolean);
+  // AI agents come first in the report: every ranked or held problem that an agent in the catalogue covers,
+  // in priority order. They keep their own evidence rating, so a weak one never reads as certain.
+  const agentItems = pb.painPoints.map((x) => ({ x, agent: agentFor(x.key, x.classification) })).filter((a) => a.agent);
+  const agentIds = new Set(agentItems.map((a) => a.x.id));
+  const top = pb.topThree.map((id) => byId.get(id)!).filter(Boolean).filter((x) => !agentIds.has(x.id));
+  const money = (v: number | null | undefined) => (v === null || v === undefined ? 'Unknown' : `£${v.toLocaleString('en-GB')}`);
+  const agents: AgentCard[] = agentItems.map(({ x, agent }) => ({
+    name: agent!.name, summary: agent!.summary, does: agent!.does, staysWithPeople: agent!.staysWithPeople, neverDoes: agent!.neverDoes,
+    regulatedStep: agent!.regulatedStep, reviewed: agent!.reviewed,
+    problem: x.title, stage: x.stageName, priorityRank: x.rank ?? null, confidence: CONF_LABEL[x.confidence] ?? x.confidence,
+    figures: [
+      { label: 'Staff hours spent per month', value: num(x.impact?.monthlyHoursSpent) },
+      { label: 'Hours it could free up per month', value: x.impact?.monthlyHoursSpent != null && x.impact?.monthlyHoursRecovered == null ? 'Not estimated yet' : num(x.impact?.monthlyHoursRecovered) },
+      { label: 'Value of that time per month', value: money(x.impact?.monthlyCapacityValueGBP) },
+    ],
+    evidence: x.quotes.slice(0, 2), unknowns: x.impact?.unknowns ?? [],
+    requiresComplianceReview: x.requiresComplianceReview || agent!.regulatedStep,
+    ...(p.plans?.get(x.id) ? { plan: p.plans.get(x.id)! } : {}),
+  }));
   const titleOf = (key: string) => pb.painPoints.find((x) => x.key === key)?.title ?? key;
 
   const businessCases: BusinessCase[] = top.map((x, i) => {
@@ -85,12 +116,16 @@ export function buildReportModel(p: { playback: Playback; profile: FirmProfile |
     };
   });
 
-  const planned = businessCases.filter((b) => b.plan);
-  const first = planned.find((b) => /automate/i.test(b.approach)) ?? planned[0];
+  // The offer leads with an agent that can start now (not held for compliance review), then everything else planned.
+  const planned = [
+    ...agents.filter((a) => a.plan && !a.requiresComplianceReview).map((a) => ({ title: a.name, plan: a.plan!, automate: true })),
+    ...businessCases.filter((b) => b.plan).map((b) => ({ title: b.title, plan: b.plan!, automate: /automate/i.test(b.approach) })),
+  ];
+  const first = planned.find((b) => b.automate) ?? planned[0];
   const offer: Offer | undefined = first ? {
     headline: 'What JADA will build for you',
-    lead: `Start with “${first.title.replace(/\.$/, '')}”: ${first.plan!.timeline.headline.charAt(0).toLowerCase()}${first.plan!.timeline.headline.slice(1)}. ${first.plan!.headline}`,
-    items: planned.map((b) => ({ title: b.title, deliver: b.plan!.headline, when: b.plan!.timeline.headline, measure: b.plan!.measures[0] ?? 'Measured before and after' })),
+    lead: `Start with “${first.title.replace(/\.$/, '')}”: ${first.plan.timeline.headline.charAt(0).toLowerCase()}${first.plan.timeline.headline.slice(1)}. ${first.plan.headline}`,
+    items: planned.map((b) => ({ title: b.title, deliver: b.plan.headline, when: b.plan.timeline.headline, measure: b.plan.measures[0] ?? 'Measured before and after' })),
     conditions: [
       'A 30-minute scoping call first, to confirm access to your systems and the sample cases we test with.',
       'Nothing reaches a client without your team’s approval, and regulated advice always stays with your advisers.',
@@ -98,7 +133,7 @@ export function buildReportModel(p: { playback: Playback; profile: FirmProfile |
     ],
   } : undefined;
 
-  const candidate = top.find((x) => x.classification === 'automate') ?? null;
+  const candidate = [...agentItems.map((a) => a.x), ...top].find((x) => x.classification === 'automate' && !x.requiresComplianceReview) ?? null;
   const recommendedBuild: ReportModel['recommendedBuild'] = !candidate
     ? { title: null, status: 'none', text: 'None of the top opportunities is suited to automation yet. The first improvements are process changes the firm can make directly.', blockers: [], toConfirm: [] }
     : {
@@ -142,9 +177,10 @@ export function buildReportModel(p: { playback: Playback; profile: FirmProfile |
     firmName: p.firmName, discoveryId: p.discoveryId, version: p.version,
     generatedAt: (p.now ?? new Date()).toISOString(), scoringConfigVersion: pb.scoringConfigVersion,
     summary: [
+      ...(agents.length ? [`${agents.length === 1 ? 'One AI agent' : `${agents.length} AI agents`} could take on work your team does by hand today: ${agents.map((a) => a.name).join(', ')}. Each works with a person approving what it does.`] : []),
       `${completed} of ${pb.participation.length} people completed an interview.`,
       `${pb.painPoints.length} operational pain point${pb.painPoints.length === 1 ? '' : 's'} identified across ${new Set(pb.painPoints.map((x) => x.stageId)).size} stage${new Set(pb.painPoints.map((x) => x.stageId)).size === 1 ? '' : 's'} of the mortgage journey.`,
-      ...(top[0] ? [`Top opportunity: ${top[0].title} — ${num(top[0].impact?.monthlyHoursRecovered)} hours a month could be recovered (evidence: ${(CONF_LABEL[top[0].confidence] ?? top[0].confidence).toLowerCase()}).`] : []),
+      ...(pb.topThree[0] && byId.get(pb.topThree[0]) ? ((t) => [`Top opportunity by value: ${t.title} — ${num(t.impact?.monthlyHoursRecovered)} hours a month could be recovered (evidence: ${(CONF_LABEL[t.confidence] ?? t.confidence).toLowerCase()}).`])(byId.get(pb.topThree[0])!) : []),
       ...(pb.crossRole && pb.crossRole.disagreements.length ? [`Accounts differed on ${pb.crossRole.disagreements.length} item${pb.crossRole.disagreements.length === 1 ? '' : 's'}; these are shown side by side rather than averaged away.`] : []),
     ],
     profile: profile ? [
@@ -154,11 +190,14 @@ export function buildReportModel(p: { playback: Playback; profile: FirmProfile |
       { label: 'Authorisation', value: { directly_authorised: 'Directly authorised', network_appointed_representative: 'Appointed representative of a network', unsure: 'Not stated' }[profile.authorisation] },
       { label: 'Systems', value: profile.systems.join(', ') || 'Not stated' },
       { label: 'Structure', value: profile.businessStructure || 'Not stated' },
+      ...(profile.otherRoles?.length ? [{ label: 'Other roles', value: profile.otherRoles.map((r) => `${r.name} (${r.count})`).join(', ') }] : []),
+      ...(profile.notes?.trim() ? [{ label: 'Notes', value: profile.notes.trim() }] : []),
     ] : [],
     participation: [...roles.entries()].map(([role, v]) => ({ role, ...v })),
     journey: pb.journey.map((s) => ({ stage: s.name, regulated: s.regulatedJudgement, painPoints: s.painPoints.map((id) => byId.get(id)!.title) })),
+    agents,
     businessCases,
-    otherFindings: pb.painPoints.filter((x) => !pb.topThree.includes(x.id)).map((x) => ({
+    otherFindings: pb.painPoints.filter((x) => !pb.topThree.includes(x.id) && !agentIds.has(x.id)).map((x) => ({
       title: x.title, stage: x.stageName, approach: x.classification ? CLASS_LABEL[x.classification] : 'Not yet classified',
       confidence: CONF_LABEL[x.confidence] ?? x.confidence, note: x.twoWeek?.excludedReason ?? '',
     })),

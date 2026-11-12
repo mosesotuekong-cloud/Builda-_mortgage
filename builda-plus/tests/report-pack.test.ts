@@ -43,11 +43,16 @@ const playback: any = {
 describe('discovery report', () => {
   const model = buildReportModel({ playback, profile: null, firmName: 'Harbour Lane Mortgages', discoveryId: 'd1', version: 1, now: new Date('2026-11-05T10:00:00Z') });
 
-  it('builds business cases that keep unknowns unknown', () => {
-    expect(model.businessCases).toHaveLength(2);
-    expect(model.businessCases[0]!.figures.find((f) => f.label.startsWith('Value'))!.value).toBe('£688');
-    expect(model.businessCases[1]!.figures.find((f) => f.label.startsWith('Hours that'))!.value).toBe('Unknown');
-    expect(model.businessCases[0]!.payback).toMatch(/not yet known/);
+  it('puts AI agents first, named from the catalogue, and keeps unknowns unknown', () => {
+    expect(model.agents!.map((a) => a.name)).toEqual(['Document Chasing Agent']);
+    const agent = model.agents![0]!;
+    expect(agent).toMatchObject({ problem: 'Manual chasing of outstanding client documents', reviewed: false, requiresComplianceReview: false });
+    expect(agent.figures.find((f) => f.label.startsWith('Value'))!.value).toBe('£688');
+    expect(agent.staysWithPeople.length).toBeGreaterThan(0);
+    expect(model.summary[0]).toMatch(/One AI agent .*Document Chasing Agent.*person approving/);
+    // The rest of the top three stay as other improvements, without repeating the agent's problem.
+    expect(model.businessCases.map((b) => b.title)).not.toContain('Manual chasing of outstanding client documents');
+    expect(model.businessCases[0]!.figures.find((f) => f.label.startsWith('Hours that'))!.value).toBe('Unknown');
   });
   it('flags regulated items, the firm-lead gap and what is still needed', () => {
     expect(model.regulatoryReview[0]).toMatch(/Assembling suitability letter packs.*compliance professional/);
@@ -61,8 +66,11 @@ describe('discovery report', () => {
     const dir = mkdtempSync(join(tmpdir(), 'rep-'));
     writeFileSync(join(dir, 'r.pdf'), pdf);
     const text = execFileSync('pdftotext', ['-enc', 'UTF-8', join(dir, 'r.pdf'), '-']).toString().replace(/\s+/g, ' ');
-    for (const s of ['Harbour Lane Mortgages', 'Top opportunities', '£688', 'Case manager 10; Mortgage adviser 40', 'Points for compliance review', 'not approved by the FCA', 'Page 1 of'])
+    for (const s of ['Harbour Lane Mortgages', 'AI agents we recommend', 'Document Chasing Agent', 'What stays with your team', 'Other improvements', '£688',
+      'Appendix A: Your firm', 'Case manager 10; Mortgage adviser 40', 'Points for compliance review', 'not approved by the FCA', 'Page 1 of'])
       expect(text).toContain(s);
+    expect(text.indexOf('AI agents we recommend')).toBeLessThan(text.indexOf('Other improvements'));
+    expect(text.indexOf('Other improvements')).toBeLessThan(text.indexOf('Appendix A'));
     expect(text).toContain('“we chase about 150 a month — £-heavy work”');
   });
 });

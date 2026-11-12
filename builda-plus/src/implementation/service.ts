@@ -6,6 +6,7 @@ import type { FirmService } from '../firm/service';
 import type { Playbook } from '../knowledge/playbook';
 import { TEMPLATES, type AutomationTemplate } from '../knowledge/templates';
 import { buildReportModel, type ReportModel } from '../report/model';
+import { agentFor } from '../knowledge/agents';
 import { playbookPlan, systemsInPlan, timelineFor, writePlan, type PlanInput, type SolutionPlan } from '../report/plans';
 import { STAGES, type StageId } from '../domain/journey';
 import type { LLMProvider } from '../llm/provider';
@@ -41,7 +42,10 @@ export class DecisionService {
     const systems = profile?.technology?.length ? profile.technology.map((t) => t.name) : profile?.systems ?? [];
     const plans = new Map<string, SolutionPlan>();
     const llm = this.deps.llmFor?.({ orgId: ctx.orgId, discoveryId });
-    await Promise.all(playback.topThree.map(async (id) => {
+    // The top three by value, plus every problem an AI agent covers (those lead the report).
+    const planFor = [...new Set([...playback.topThree,
+      ...playback.painPoints.filter((x) => agentFor(x.key, x.classification)).map((x) => x.id)])];
+    await Promise.all(planFor.map(async (id) => {
       const x = playback.painPoints.find((p) => p.id === id);
       if (!x || !timelineFor(x.classification, systems)) return;
       const input: PlanInput = {

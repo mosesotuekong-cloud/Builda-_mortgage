@@ -26,6 +26,12 @@ describe('firm profile schema (Phase 2 fields)', () => {
     expect(p.technology![1]).toEqual({ name: 'Mail', category: 'email_communication', purpose: '', teams: [], notes: '' });
     expect(FirmProfileSchema.parse({ ...base, technology: [] }).systems).toEqual([]);
   });
+  it('keeps other roles and notes, and rejects a role without a count', () => {
+    const p = FirmProfileSchema.parse({ ...base, otherRoles: [{ name: 'Paraplanner', count: 1 }], notes: 'Two advisers are part-time.' });
+    expect(p).toMatchObject({ otherRoles: [{ name: 'Paraplanner', count: 1 }], notes: 'Two advisers are part-time.' });
+    expect(() => FirmProfileSchema.parse({ ...base, otherRoles: [{ name: 'Paraplanner' }] })).toThrow();
+    expect(() => FirmProfileSchema.parse({ ...base, notes: 'x'.repeat(2001) })).toThrow();
+  });
   it('rejects invalid Phase 2 values', () => {
     expect(() => FirmProfileSchema.parse({ ...base, website: 'not a url' })).toThrow();
     expect(() => FirmProfileSchema.parse({ ...base, technology: [{ name: '', category: 'crm_mortgage' }] })).toThrow();

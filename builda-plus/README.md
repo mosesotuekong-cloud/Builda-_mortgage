@@ -150,6 +150,15 @@ regulatory checks and trusted sources (title, reference, publisher, date, sectio
 - Deployment note: the knowledge_candidates() function must be owned by a role that bypasses
   row-level security, since it aggregates across firms.
 
+## AI agents, setup by chat
+- `src/knowledge/agents.ts` is JADA's catalogue of named AI agents (Document Chasing Agent, Case Update Agent and
+  so on). A fixed rule matches them to "automate" findings by playbook problem; the AI never names them. Every
+  entry is a DRAFT until JADA reviews it, and the report says so. The report leads with these agents, then the
+  other improvements in brief, then appendices.
+- Setup by chat (`/app/profile/chat`, `src/firm/setupChat.ts`): the AI asks the questions and suggests values;
+  code checks each one, and accepts a number only if the firm lead typed it. Nothing is saved until the firm lead
+  checks the filled-in form and presses Save.
+
 ## Retention, deletion and withdrawal (R3)
 - The firm lead closes a discovery when it's finished; interviews are deleted RETENTION_MONTHS later (or that long
   after 90 days with no activity, if it's never closed). The discovery Overview shows the date.

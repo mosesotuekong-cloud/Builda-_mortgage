@@ -30,7 +30,8 @@ export function firmContextBrief(p: FirmProfile | null): string | null {
   const count = (role: string) => p.staffRoles.find((r) => r.role === role)?.count;
   const people = [`${p.advisers} mortgage adviser${p.advisers === 1 ? '' : 's'}`,
     count('case_manager') ? `${count('case_manager')} case manager${count('case_manager') === 1 ? '' : 's'}` : null,
-    count('administrator') ? `${count('administrator')} administrator${count('administrator') === 1 ? '' : 's'}` : null].filter(Boolean).join(', ');
+    count('administrator') ? `${count('administrator')} administrator${count('administrator') === 1 ? '' : 's'}` : null,
+    ...(p.otherRoles ?? []).filter((r) => r.count > 0).slice(0, 6).map((r) => `${r.count} ${clip(r.name, 40).toLowerCase()}`)].filter(Boolean).join(', ');
   const lines = [
     `- People: ${people}.`,
     p.monthlyApplications ? `- About ${p.monthlyApplications} mortgage applications a month.` : null,

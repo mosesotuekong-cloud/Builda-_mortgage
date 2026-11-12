@@ -17,6 +17,7 @@ import { BrevoMailer } from './firm/mailer';
 import { MORTGAGE_PACK } from './understanding/packs/mortgage';
 import pg from 'pg';
 import { AdminService } from './admin/service';
+import { SetupChatService } from './firm/setupChat';
 
 const env = (k: string, fallback?: string) => {
   const v = process.env[k] ?? fallback;
@@ -79,6 +80,7 @@ const providerFor = ({ orgId, discoveryId }: { orgId: string; discoveryId: strin
 const knowledge = new KnowledgeService(db, { allowUnreviewedSeed: process.env.NODE_ENV !== 'production' });
 const playbookFor = knowledge.forDiscovery;
 const firms = new FirmService(db, mailer, { appBaseUrl, invitationDays: 30, playbookVersion: SEED_PLAYBOOK.version, currentPlaybookVersion: () => knowledge.currentVersion() });
+const setupChat = new SetupChatService({ providerFor });
 const analysis = new AnalysisService(db, { providerFor, playbook: SEED_PLAYBOOK, playbookFor, mailer, appBaseUrl });
 // The JADA admin page uses the administrator connection: never in production.
 const adminUrl = process.env.DATABASE_ADMIN_URL?.trim();
@@ -92,6 +94,7 @@ const app = buildApp({
   knowledge,
   signin: new SigninService(db, firms),
   guide: { llm: model },
+  setupChat,
   participants: new ParticipantAccessService(db),
   decisions: new DecisionService(db, { analysis, firms, playbook: SEED_PLAYBOOK, llmFor: providerFor }),
   jada: new JadaService(db),
