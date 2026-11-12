@@ -65,9 +65,9 @@ export function buildOpportunities(pps: PainPointForScoring[], profile: FirmProf
     if (pp.overrides.minutesPerOccurrence !== undefined) assumptions.push('Time per occurrence corrected by the firm lead');
     let reductionPct: number | null = null;
     if (pp.overrides.reductionPct !== undefined && pp.overrides.reductionPct !== null) {
-      reductionPct = pp.overrides.reductionPct; assumptions.push(`Reduction of ${Math.round(reductionPct * 100)}% set by the firm lead`);
+      reductionPct = pp.overrides.reductionPct; assumptions.push(`Share of time that could be saved: ${Math.round(reductionPct * 100)}%, set by the firm lead`);
     } else if (template) {
-      reductionPct = template.expectedReductionPct; assumptions.push(`Reduction of ${Math.round(reductionPct * 100)}%: ${template.reductionBasis}`);
+      reductionPct = template.expectedReductionPct; assumptions.push(`Share of time that could be saved: ${Math.round(reductionPct * 100)}%, ${template.reductionBasis}`);
     }
     const hourly = profile?.loadedHourlyCostGBP ?? null;
     if (hourly !== null) assumptions.push(`Labour cost of £${hourly}/hour supplied by the firm`);

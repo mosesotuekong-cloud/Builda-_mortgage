@@ -306,16 +306,36 @@ function findingsTab(ws, dw, fid) {
   if (!dw.findings.length) return [empty('No findings yet', dw.discovery.analysedAt ? 'The analysis didn’t produce findings. Follow-up questions or more participants may help.' : 'Findings appear once the interviews are analysed.', !dw.discovery.analysedAt && dw.completion.interviews.completed ? linkBtn(dUrl(id), 'Go to analysis', 'primary') : null, 'opportunities')];
   const cr = dw.crossRole;
   const titleOf = (key) => (dw.findings.find((f) => f.key === key) || { title: key }).title;
+  const sized = dw.findings.filter((f) => f.classification !== 'keep_human' && f.impact && f.impact.monthlyHoursSpent !== null);
+  const lost = sized.reduce((n, f) => n + f.impact.monthlyHoursSpent, 0);
+  const stat = (label, value, note) => el('div', { class: 'ws-stat' }, el('dt', { class: 'ws-stat__label' }, label), el('dd', { class: 'ws-stat__value' }, value), note ? el('dd', { class: 'ws-subtle dw-stat__note' }, note) : null);
+  const named = (label, keys, none) => el('div', { class: 'dw-cross__item' }, el('h3', { class: 'ds-h4' }, label),
+    keys.length ? el('ul', { class: 'ds-body-sm' }, ...keys.map((k) => el('li', {}, titleOf(k)))) : el('p', { class: 'ds-muted ds-body-sm' }, none));
   return [
-    cr ? el('div', { class: 'ds-alert ds-alert--info' }, el('p', { class: 'ds-alert__title' }, 'Across roles'),
-      el('p', {}, `Agreed by several people: ${cr.agreements.length ? cr.agreements.map(titleOf).join('; ') : 'none yet'}. Accounts differ: ${cr.disagreements.length ? cr.disagreements.map(titleOf).join('; ') : 'none'}. `,
-        cr.firmLeadInterviewed ? `Raised by staff but not by you: ${cr.blindSpots.length ? cr.blindSpots.map(titleOf).join('; ') : 'none'}.` : 'Complete your own interview to see what staff raised that you didn’t.')) : null,
+    el('dl', { class: 'ws-stats dw-stats' },
+      stat('Problems found', String(dw.findings.length), null),
+      stat('Staff time lost a month', sized.length ? `${num(lost)} hours` : 'Not known yet', sized.length ? `from the ${sized.length} of ${dw.findings.length} with figures` : 'No figures given yet'),
+      stat('Described by more than one person', cr ? String(cr.agreements.length) : '—', 'the strongest evidence'),
+      stat('Raised by your team, not by you', cr && cr.firmLeadInterviewed ? String(cr.blindSpots.length) : '—', cr && cr.firmLeadInterviewed ? 'things you might not see day to day' : 'Do your own interview to see this')),
+    cr ? el('div', { class: 'ws-grid-2 dw-cross' },
+      named('Your team raised these, you didn’t', cr.firmLeadInterviewed ? cr.blindSpots : [], cr.firmLeadInterviewed ? 'None: you raised everything your team did.' : 'Do your own interview to see what your team raised that you didn’t.'),
+      named('People describe these differently', cr.disagreements, 'None: where people described the same problem, their accounts matched.')) : null,
     nextBar(dw, 'findings'),
-    el('div', { class: 'ws-findings ws-section' }, ...dw.findings.slice().sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9)).map((f) => el('article', { class: 'ds-card ws-finding' },
-      el('div', { class: 'ws-finding__top' }, el('h3', { class: 'ws-finding__title' }, el('a', { href: dUrl(id, 'findings', f.id) }, f.title)),
-        el('div', { class: 'ds-cluster' }, classification(f.classification))),
-      el('p', { class: 'ws-subtle' }, `${f.stageName} · ${plural(f.evidenceIds.length - f.disputedEvidence, 'evidence item')}${f.disputedEvidence ? ` · ${f.disputedEvidence} disputed` : ''}${f.disagreements.length ? ' · accounts differ' : ''}`),
-      el('div', { class: 'dw-dims' }, ...['existence', 'volume', 'effort', 'impact'].map((k) => el('div', { class: 'dw-dim' }, el('span', { class: 'ws-subtle' }, DIMENSION_LABEL[k]), confidence(f.dimensions[k].level)))))))];
+    el('div', { class: 'ws-findings ws-section' }, ...dw.findings.slice().sort((a, b) => (a.rank ?? 1e9) - (b.rank ?? 1e9)).map((f) => {
+      const im = f.impact || {};
+      const cost = im.monthlyHoursSpent === null || im.monthlyHoursSpent === undefined
+        ? el('p', { class: 'dw-cost dw-cost--none' }, 'Staff time not known yet: nobody has said how often it happens and how long it takes.')
+        : el('p', { class: 'dw-cost' }, el('strong', {}, `${num(im.monthlyHoursSpent)} staff hours a month`),
+          im.monthlyHoursRecovered !== null && im.monthlyHoursRecovered !== undefined ? ` · about ${num(im.monthlyHoursRecovered)} could be freed up` : ' · how much could be saved not estimated yet',
+          im.monthlyCapacityValueGBP ? el('span', { class: 'ws-subtle' }, ` (≈ £${Number(im.monthlyCapacityValueGBP * 12).toLocaleString('en-GB')} a year in staff time)`) : null);
+      return el('article', { class: 'ds-card ws-finding' },
+        el('div', { class: 'ws-finding__top' }, el('h3', { class: 'ws-finding__title' }, el('a', { href: dUrl(id, 'findings', f.id) }, f.title)),
+          el('div', { class: 'ds-cluster' }, classification(f.classification))),
+        el('p', { class: 'ws-subtle' }, `${f.stageName} · described by ${f.participantCount === 1 ? 'one person' : `${f.participantCount} people`}${f.roles.length ? ` (${f.roles.join(', ')})` : ''}${f.disputedEvidence ? ` · ${f.disputedEvidence} disputed` : ''}${f.disagreements.length ? ' · people describe it differently' : ''}`),
+        cost,
+        el('p', { class: 'ws-subtle dw-dims__label' }, 'How sure we are'),
+        el('div', { class: 'dw-dims' }, ...['existence', 'volume', 'effort', 'impact'].map((k) => el('div', { class: 'dw-dim' }, el('span', { class: 'ws-subtle' }, DIMENSION_LABEL[k]), confidence(f.dimensions[k].level)))));
+    }))];
 }
 
 // What people said behind a finding: read-only, by role (quotes withheld where a role has fewer than three people).
@@ -332,8 +352,8 @@ function findingDetail(dw, fid) {
   const items = dw.evidence.filter((e) => e.findingId === f.id);
   const supporting = items.filter((e) => e.review.status !== 'disputed'), disputed = items.filter((e) => e.review.status === 'disputed');
   const figure = (label, est, override) => el('div', { class: 'dw-figure' }, el('span', { class: 'ws-subtle' }, label),
-    override !== undefined ? el('span', {}, el('strong', {}, num(override)), el('span', { class: 'ws-subtle' }, ' set by you')) :
-      est && est.value !== null && est.value !== undefined ? el('span', {}, el('strong', {}, num(est.value)), el('span', { class: 'ws-subtle' }, est.n > 1 ? ` middle of ${est.n} accounts (${num(est.min)}–${num(est.max)})` : ' one account')) : el('strong', {}, 'Unknown'));
+    override !== undefined && override !== null ? el('span', {}, el('strong', {}, num(override)), el('span', { class: 'ws-subtle' }, ' entered by you')) :
+      est && est.value !== null && est.value !== undefined ? el('span', {}, el('strong', {}, num(est.value)), el('span', { class: 'ws-subtle' }, est.n > 1 ? (est.min === est.max ? (est.n === 2 ? ' both people said the same' : ` all ${est.n} people said the same`) : ` middle of ${est.n} people’s answers (${num(est.min)}–${num(est.max)})`) : ' one person’s answer')) : el('strong', {}, 'Not given yet'));
   const sources = [...new Set(items.map((e) => e.source))];
   return [
     el('p', {}, el('a', { href: dUrl(id, 'findings') }, '← All findings')),
@@ -344,21 +364,22 @@ function findingDetail(dw, fid) {
     el('div', { class: 'ws-grid-2' },
       el('div', {},
         section('What was described', null, el('div', { class: 'ds-stack ds-body-sm' },
-          el('p', {}, `Reported by ${f.roles.join(', ') || '—'} (${plural(f.participantCount, 'person', 'people')}).`),
+          el('p', {}, `Described by ${plural(f.participantCount, 'person', 'people')}: ${f.roles.join(', ') || '—'}.`),
           f.causes.length ? el('p', {}, el('strong', {}, 'Causes mentioned: '), f.causes.join('; ')) : null,
           f.improvements.length ? el('p', {}, el('strong', {}, 'Improvements suggested: '), f.improvements.join('; ')) : null,
-          el('p', {}, el('strong', {}, 'Approach: '), f.classification ? `${CLASSIFICATION[f.classification][1]} — ${CLASSIFICATION_SOURCE[f.classificationSource] || 'source not recorded'}.` : 'Not yet classified.',
+          el('p', {}, el('strong', {}, 'Suggested approach: '), f.classification ? `${CLASSIFICATION[f.classification][1]} (${(CLASSIFICATION_SOURCE[f.classificationSource] || 'source not recorded').toLowerCase()}).` : 'Not yet decided.',
             f.classificationRationale ? ` ${f.classificationRationale}` : ''))),
-        section('Figures', null, el('div', { class: 'dw-figures' },
+        section('What it costs your firm', null, el('div', { class: 'dw-figures' },
           figure('Times a month', f.volume, f.overrides.monthlyVolume), figure('Minutes each time', f.minutes, f.overrides.minutesPerOccurrence),
-          el('div', { class: 'dw-figure' }, el('span', { class: 'ws-subtle' }, 'Staff hours a month'), el('strong', {}, num(f.impact && f.impact.monthlyHoursSpent))),
-          el('div', { class: 'dw-figure' }, el('span', { class: 'ws-subtle' }, 'Hours that could be recovered'), el('strong', {}, num(f.impact && f.impact.monthlyHoursRecovered)))),
+          el('div', { class: 'dw-figure' }, el('span', { class: 'ws-subtle' }, 'Staff hours a month'), el('strong', {}, f.impact && f.impact.monthlyHoursSpent !== null ? num(f.impact.monthlyHoursSpent) : 'Not known yet')),
+          el('div', { class: 'dw-figure' }, el('span', { class: 'ws-subtle' }, 'Hours that could be freed up'), el('strong', {}, f.impact && f.impact.monthlyHoursRecovered !== null ? num(f.impact.monthlyHoursRecovered) : 'Not estimated yet'),
+            f.impact && f.impact.monthlyCapacityValueGBP ? el('span', { class: 'ws-subtle' }, `≈ £${Number(f.impact.monthlyCapacityValueGBP * 12).toLocaleString('en-GB')} a year in staff time, not money saved`) : null)),
           f.assumptions.length ? el('ul', { class: 'ds-body-sm dw-assumptions' }, ...f.assumptions.map((a) => el('li', {}, sourceBadge(/supplied by the firm|by the firm lead|set by the firm lead/i.test(a) ? 'firm_provided' : 'assumption'), ' ', a))) : null),
-        f.disagreements.length ? section('Different perspectives', null, el('div', { class: 'ds-alert ds-alert--warning' },
-          el('p', { class: 'ds-alert__title' }, 'Accounts differ'),
+        f.disagreements.length ? section('People see it differently', null, el('div', { class: 'ds-alert ds-alert--warning' },
+          el('p', { class: 'ds-alert__title' }, 'Their answers differ'),
           ...f.disagreements.map((dg) => el('p', {}, `${dg.field === 'minutesPerOccurrence' ? 'Minutes each time' : 'Times a month'}: ${dg.values.map((v) => `${v.role} ${num(v.value)}`).join(' · ')}`)),
-          el('p', {}, 'Differences often mean the work varies by case type or role. They’re kept side by side, not averaged away or treated as mistakes.'))) : null,
-        section('What people said', el('span', { class: 'ds-cluster' }, ...sources.map(sourceBadge)), supporting.length ? evidenceQuotes(supporting) : el('p', { class: 'ds-muted ds-body-sm' }, 'No evidence supports this finding.'))),
+          el('p', {}, 'This often means the work varies by case type or role. Both answers are kept side by side, not averaged or treated as mistakes.'))) : null,
+        section('What people said', el('span', { class: 'ds-cluster' }, ...sources.map(sourceBadge)), supporting.length ? evidenceQuotes(supporting) : el('p', { class: 'ds-muted ds-body-sm' }, 'Nothing anyone said supports this finding.'))),
       el('div', {},
         // Optional, and only if something is wrong: approving the opportunity is how a finding is confirmed.
         el('details', { class: 'ws-fieldset dw-fix' }, el('summary', {}, 'Something wrong? Correct it'),
@@ -375,7 +396,7 @@ function correctionForm(dw, f) {
   const id = dw.discovery.id;
   const fieldSel = el('select', { class: 'ds-select', name: 'field' }, ...[
     ['classification', 'Approach'], ['monthlyVolume', 'Times a month'], ['minutesPerOccurrence', 'Minutes each time'],
-    ['reductionPct', 'Share of work that could be removed (%)'], ['title', 'Title'], ['stageId', 'Stage'], ['clarification', 'Add a clarification'],
+    ['reductionPct', 'Share of time that could be saved (%)'], ['title', 'Title'], ['stageId', 'Stage'], ['clarification', 'Add a clarification'],
   ].map(([v, l]) => el('option', { value: v }, l)));
   const holder = el('div', {});
   const reason = el('textarea', { class: 'ds-textarea', name: 'reason', maxlength: '1000', rows: '2' });
@@ -410,7 +431,7 @@ function correctionForm(dw, f) {
     catch (err) { setMsg(m, err.message, 'error'); submit.disabled = false; }
   } },
     el('div', { class: 'ds-field' }, el('label', { class: 'ds-label', for: `c-${f.id}` }, 'What to change'), (fieldSel.id = `c-${f.id}`, fieldSel)),
-    holder, field('Reason', reason, { help: 'Recorded in the history with your correction.' }),
+    holder, field('Reason', reason, { help: 'Saved with your correction.' }),
     el('div', { class: 'ds-cluster' }, submit, m));
 }
 
