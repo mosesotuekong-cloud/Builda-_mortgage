@@ -156,6 +156,25 @@ describe.skipIf(!APP || !ADMIN)('discovery workspace (Phase 3)', () => {
     expect(audit.rows[0].metadata).toMatchObject({ findings: 2, needValidation: 2, disputedEvidence: 1 });
   });
 
+  it('counts only people, not records, toward the three-person quote threshold (P-1)', async () => {
+    const id = await firms.createDiscovery(a);
+    for (const [name, role] of [['Lead', 'firm_lead'], ['Admin 1', 'administrator'], ['Admin 2', 'administrator']] as const) await firms.inviteParticipant(a, id, { name, role });
+    const ins = (p: string | null, source: string, quote: string | null) => admin.query(
+      `insert into evidence_records (id, org_id, discovery_id, participant_pseudonym, source, pain_point_key, stage_id, task_description, responsible_role, monthly_volume, minutes_per_occurrence, supporting_quote)
+       values ($1,$2,$3,$4,$5,'document_chasing','documents','Chasing documents','administrator',100,10,$6)`, [randomUUID(), a.orgId, id, p, source, quote]);
+    await ins('P2', 'firm_said', 'I chase payslips every morning');
+    await ins('P3', 'firm_said', 'the spreadsheet is always out of date');
+    await ins(null, 'operational_record', 'CRM report: 30 cases waiting on documents');   // a record attributed to the role is not a third person
+    expect((await app.inject({ method: 'POST', url: `/api/firm/discoveries/${id}/analyse`, headers: as(a) })).statusCode).toBe(200);
+    const w = (await ws(a, id)).json();
+    const admins = w.evidence.filter((e: any) => e.role === 'Administrator' && e.source === 'employee_reported');
+    expect(admins).toHaveLength(2);
+    expect(admins.every((e: any) => e.quote === null && e.quoteWithheld)).toBe(true);
+    const pb = (await app.inject({ method: 'GET', url: `/api/firm/discoveries/${id}/playback`, headers: as(a) })).json();
+    const quotes = pb.painPoints.flatMap((p: any) => p.quotes.map((q: any) => q.quote));
+    expect(quotes).not.toContain('I chase payslips every morning');
+  });
+
   it('never exposes the discovery to another firm', async () => {
     expect((await ws(b)).statusCode).toBe(404);
     const anyEvidence = (await ws()).json().evidence[0].id;

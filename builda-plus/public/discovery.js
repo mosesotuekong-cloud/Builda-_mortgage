@@ -25,7 +25,7 @@ async function discoveryWorkspacePage(ws, id, tab = '', sub = '') {
   if (!summary) return { crumbs: [{ label: 'Discovery', href: '/app/discovery' }, { label: 'Not found' }], nodes: [pageHeader('Discovery not found'), empty('We couldn’t find that discovery', 'It may belong to a different workspace, or the link may be wrong.', linkBtn('/app/discovery', 'All discoveries'))] };
   const dw = await api(`/api/firm/discoveries/${id}/workspace`);
   const d = dw.discovery;
-  const [sl, sv] = DISCOVERY_STATUS[d.status] || [d.status, 'neutral'];
+  const [sl, sv] = discoveryStatus(summary);
   const tabLabel = (TABS.find(([k]) => k === tab) || TABS[0])[1];
   const crumbs = [{ label: 'Discovery', href: '/app/discovery' }, { label: d.name, href: dUrl(id) }, ...(tab ? [{ label: tabLabel }] : [])];
   const head = el('div', { class: 'ds-page-header dw-head' },
@@ -43,14 +43,16 @@ async function discoveryWorkspacePage(ws, id, tab = '', sub = '') {
 }
 
 /* ============================================================ A. overview */
-function nextStep(dw) {
+function nextStep(dw, summary, ws) {
   const d = dw.discovery, id = d.id, c = dw.completion;
   if (!dw.profile) return ['Complete the firm context', 'Interviews are more useful when they know how your firm is set up.', dUrl(id, 'context'), 'Open firm context'];
   if (!dw.participants.length) return ['Invite people to interview', 'Include advisers, case managers and administrators, and yourself.', dUrl(id, 'interviews'), 'Invite participants'];
   if (c.interviews.completed === 0) return ['Wait for interviews to finish', `${c.interviews.completed} of ${c.interviews.invited} interviews finished. Share any links you haven’t sent yet.`, dUrl(id, 'interviews'), 'View interviews'];
   if (!d.analysedAt) return ['Analyse the interviews', 'Compare accounts across roles to produce findings, each linked to its evidence.', null, null];
   if (d.status === 'interviews') return ['Look through the findings', 'What the interviews found, with what people said behind each one. Correct anything that’s wrong, then move on.', dUrl(id, 'findings'), 'See the findings'];
-  return ['Approve your priorities', 'Choose which opportunities matter most, then download your report.', `/app/opportunities?d=${id}`, 'Go to opportunities'];
+  // From here on, the same step the workspace Overview recommends, so the two pages never disagree.
+  const n = nextAction(ws, summary);
+  return [n.title, n.text, n.href, n.label];
 }
 
 async function runAction(btn, m, label, fn) {
@@ -81,13 +83,15 @@ function actionsBar(dw) {
 
 function overviewTab(ws, dw) {
   const d = dw.discovery, c = dw.completion, id = d.id;
-  const [title, text, href, label] = nextStep(dw);
+  const summary = ws.discoveries.find((x) => x.id === id);
+  const [title, text, href, label] = nextStep(dw, summary, ws);
+  const complete = d.status === 'priorities_approved' || discoveryStatus(summary)[0] === 'Discovery complete';
   const steps = [
     ['Firm context', !!dw.profile, false, dw.profile ? 'Provided by the firm' : 'Not provided', dUrl(id, 'context')],
     ['Interviews', c.interviews.invited > 0 && c.interviews.completed >= c.interviews.invited, c.interviews.invited > 0, c.interviews.invited ? `${c.interviews.completed} of ${c.interviews.invited} finished` : 'Nobody invited yet', dUrl(id, 'interviews')],
     ['Analysis', !!d.analysedAt, c.interviews.completed > 0, d.analysedAt ? `Last analysed ${fmtDateTime(d.analysedAt)}` : 'Not analysed yet', null],
     ['Findings', ['review_ready', 'priorities_approved'].includes(d.status), !!d.analysedAt, d.analysedAt ? plural(c.findings.total, 'finding') : '—', dUrl(id, 'findings')],
-    ['Opportunities', d.status === 'priorities_approved', ['review_ready', 'priorities_approved'].includes(d.status), d.status === 'priorities_approved' ? 'Priorities approved' : 'Approve your priorities', `/app/opportunities?d=${id}`],
+    ['Opportunities', complete, ['review_ready', 'priorities_approved'].includes(d.status), d.status === 'priorities_approved' ? 'Priorities approved' : complete ? `${plural(summary.approved, 'opportunity', 'opportunities')} approved` : 'Approve your priorities', `/app/opportunities?d=${id}`],
   ];
   const outstanding = [
     ...!dw.profile ? [['Firm details not provided', dUrl(id, 'context')]] : [],
@@ -106,7 +110,37 @@ function overviewTab(ws, dw) {
           el('div', {}, link ? el('a', { class: 'ws-step__title', href: link }, t) : el('span', { class: 'ws-step__title' }, t), el('p', { class: 'ws-step__detail' }, detail)));
       }))),
       section('Outstanding', null, outstanding.length ? el('ul', { class: 'ws-list ws-attention' }, ...outstanding.map(([t, h]) => el('li', {}, el('a', { href: h }, t)))) : el('p', { class: 'ds-muted ds-body-sm' }, 'Nothing outstanding.'))),
+    retentionPanel(dw),
   ];
+}
+
+// How long the interviews are kept (R3): counted from closing the discovery, or from 90 days after its last
+// activity if it's never closed. At the end, everything people said is deleted; findings, figures and decisions stay.
+function retentionPanel(dw) {
+  const d = dw.discovery, months = dw.retentionMonths;
+  const addMonths = (iso, m) => { const x = new Date(iso); x.setMonth(x.getMonth() + m); return x.toISOString(); };
+  const withdrawn = d.withdrawals ? el('p', { class: 'ds-body-sm' }, `${plural(d.withdrawals, 'person', 'people')} withdrew their interview. What they said has been deleted everywhere.`) : null;
+  let body;
+  if (d.contentPurgedAt) {
+    body = el('p', { class: 'ds-body-sm' }, `Interviews deleted on ${fmtDate(d.contentPurgedAt)}. The findings, figures and your decisions are kept, without anyone’s words or names.`);
+  } else if (!months) {
+    body = el('p', { class: 'ds-body-sm ds-muted' }, 'The retention period hasn’t been set for this installation yet, so nothing is deleted automatically.');
+  } else if (d.closedAt) {
+    body = el('p', { class: 'ds-body-sm' }, `Closed on ${fmtDate(d.closedAt)}. The interviews will be deleted on ${fmtDate(addMonths(d.closedAt, months))}, ${months} months later.`);
+  } else {
+    const msg = el('p', { class: 'ds-help', role: 'status' });
+    const close = el('button', { class: 'ds-btn ds-btn--secondary', type: 'button' }, 'Close discovery');
+    close.addEventListener('click', async () => {
+      if (!confirm(`Close this discovery? The interviews will be deleted ${months} months from today. Findings, figures and your decisions are kept.`)) return;
+      close.disabled = true;
+      try { await api(`/api/firm/discoveries/${d.id}/close`, 'POST'); location.reload(); } catch (err) { msg.textContent = err.message; close.disabled = false; }
+    });
+    const fallback = new Date(d.lastActivityAt); fallback.setDate(fallback.getDate() + 90);
+    body = el('div', { class: 'ds-stack' },
+      el('p', { class: 'ds-body-sm' }, `When this discovery is finished, close it. The interviews are deleted ${months} months after that. If it’s never closed, they’re deleted ${months} months after 90 days with no activity (on ${fmtDate(addMonths(fallback.toISOString(), months))} as things stand).`),
+      el('p', {}, close), msg);
+  }
+  return section('Keeping your information', el('span', { class: 'ws-subtle' }, 'What people told us, and for how long'), body, withdrawn);
 }
 
 /* ============================================================ B. firm context */

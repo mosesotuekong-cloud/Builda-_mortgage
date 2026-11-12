@@ -34,9 +34,9 @@ describe('business case: four kinds of value, nothing invented', () => {
   });
   it('revenue needs confirmed demand; capacity needs the firm’s own hours per case', () => {
     const base = { staffHoursPerCase: given(8), revenuePerCaseGBP: given(900) };
-    expect(businessCase(inputs(base)).capacity.additionalCasesPerMonth).toBe(3.1);
+    expect(businessCase(inputs(base)).capacity.additionalCasesPerMonth).toBe(3);
     expect(businessCase(inputs(base)).revenue.monthlyPotentialGBP).toBeNull();
-    expect(businessCase(inputs(base, true)).revenue.monthlyPotentialGBP).toBe(2790);
+    expect(businessCase(inputs(base, true)).revenue.monthlyPotentialGBP).toBe(2700);
     expect(businessCase(inputs()).capacity.additionalCasesPerMonth).toBeNull();
   });
   it('lists missing inputs instead of filling them in, and keeps each source', () => {

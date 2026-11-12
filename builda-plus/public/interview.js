@@ -15,6 +15,28 @@ async function api(path, body) {
   return data;
 }
 
+// Withdrawal (R3): a confirmation first, because it can't be undone.
+function withdrawLink(back) {
+  return el('button', { class: 'link-btn', type: 'button', onclick: () => renderWithdraw(back) }, 'Withdraw my interview');
+}
+function renderWithdraw(back) {
+  const error = el('p', { class: 'notice', role: 'alert', hidden: '' });
+  const go = el('button', { class: 'btn btn-primary', type: 'button' }, 'Yes, withdraw and delete my interview');
+  go.addEventListener('click', async () => {
+    go.disabled = true;
+    try {
+      await api('/api/interview/withdraw', {});
+      root.replaceChildren(el('div', { class: 'consent' }, el('h1', {}, 'Your interview has been withdrawn'),
+        el('p', {}, 'What you said has been deleted, including from any report, and the findings will be worked out again without you. Your link no longer works. You can close this page.')));
+    } catch (err) { error.textContent = err.message; error.hidden = false; go.disabled = false; }
+  });
+  root.replaceChildren(el('div', { class: 'consent' },
+    el('h1', {}, 'Withdraw your interview?'),
+    el('p', {}, 'Everything you said will be deleted: the conversation, your answers and any quotes, wherever they were used, including a report already made. Your name and email address are removed too.'),
+    el('p', {}, 'This can’t be undone, and you can’t take part again with this link. You don’t need to give a reason.'),
+    error, el('div', { class: 'actions' }, go, el('button', { class: 'btn', type: 'button', onclick: back }, 'Keep my interview'))));
+}
+
 function renderConsent(me) {
   const agree = el('input', { type: 'checkbox', id: 'agree' });
   const start = el('button', { class: 'btn btn-primary', type: 'submit', disabled: '' }, 'Agree and start the interview');
@@ -29,7 +51,7 @@ function renderConsent(me) {
     el('p', { class: 'muted' }, `Process review for ${me.firmName}`),
     ...me.consent.sections.flatMap((s) => [el('h2', {}, s.heading), el('p', {}, s.body)]),
     el('label', { for: 'agree' }, agree, el('span', {}, 'I’ve read this and I’m happy to take part.')),
-    error, start);
+    error, start, el('p', { class: 'muted' }, 'Changed your mind? ', withdrawLink(() => renderConsent(me))));
   root.replaceChildren(form);
 }
 
@@ -92,7 +114,7 @@ function renderInterview(firmName, session) {
   textarea.addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) composer.querySelector('form').requestSubmit(); });
 
   root.replaceChildren(el('div', { class: 'shell' },
-    el('header', { class: 'top' }, el('span', { class: 'firm' }, firmName), pause),
+    el('header', { class: 'top' }, el('span', { class: 'firm' }, firmName), el('span', { class: 'top__actions' }, withdrawLink(() => location.reload()), pause)),
     session.stages.length ? journey : el('div'),
     conversation, composer));
   for (const m of session.messages) addMessage(m.role, m.content);

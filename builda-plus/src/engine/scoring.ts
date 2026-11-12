@@ -68,6 +68,8 @@ export function scoreOpportunity(o: OpportunityInput, cfg = DEFAULT_SCORING_CONF
   return { input: o, total: Math.round(total * 10) / 10, dimensions, configVersion: cfg.version };
 }
 
+export const unsized = (s: ScoredOpportunity) => s.input.impact.monthlyHoursSpent === null;
+
 export function rankOpportunities(list: OpportunityInput[], cfg = DEFAULT_SCORING_CONFIG) {
   const excluded: { id: string; reason: string }[] = [];
   const eligible: ScoredOpportunity[] = [];
@@ -76,7 +78,10 @@ export function rankOpportunities(list: OpportunityInput[], cfg = DEFAULT_SCORIN
     if (o.confidence === 'insufficient') { excluded.push({ id: o.id, reason: 'Insufficient evidence — more information needed before ranking' }); continue; }
     eligible.push(scoreOpportunity(o, cfg));
   }
+  // A problem whose staff time is known comes before one nobody has sized, whatever the score: otherwise a
+  // problem with no figures can outrank one costing the firm many hours.
   eligible.sort((a, b) =>
+    Number(unsized(a)) - Number(unsized(b)) ||
     b.total - a.total ||
     (b.input.impact.monthlyHoursRecovered ?? -1) - (a.input.impact.monthlyHoursRecovered ?? -1) ||
     a.input.id.localeCompare(b.input.id));
@@ -87,9 +92,11 @@ export function rankOpportunities(list: OpportunityInput[], cfg = DEFAULT_SCORIN
 // "Why does A rank above B?" — weighted contribution differences, largest first, in plain words.
 const PLAIN: Record<Dimension, string> = { impact: 'Time saved', volume: 'How often it happens', feasibility: 'Readiness to build', complexity: 'Build effort', risk: 'Regulatory risk', confidence: 'Strength of evidence' };
 export function explainRanking(a: ScoredOpportunity, b: ScoredOpportunity, cfg = DEFAULT_SCORING_CONFIG): string[] {
-  return DIMENSIONS
+  const sizing = !unsized(a) && unsized(b)
+    ? [`Staff time: ${a.input.impact.monthlyHoursSpent} hours a month here, not given yet for the next one (problems we can size come first)`] : [];
+  return [...sizing, ...DIMENSIONS
     .map((d) => ({ d, delta: cfg.weights[d] * ((a.dimensions[d].score - b.dimensions[d].score) / 5) * 100 }))
     .filter((x) => Math.abs(x.delta) >= 0.05)
     .sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta))
-    .map(({ d, delta }) => `${PLAIN[d]}: ${a.dimensions[d].rationale} here, ${b.dimensions[d].rationale} for the next one (${delta > 0 ? '+' : '−'}${Math.abs(delta).toFixed(0)} points out of 100)`);
+    .map(({ d, delta }) => `${PLAIN[d]}: ${a.dimensions[d].rationale} here, ${b.dimensions[d].rationale} for the next one (${delta > 0 ? '+' : '−'}${Math.abs(delta).toFixed(0)} points out of 100)`)];
 }

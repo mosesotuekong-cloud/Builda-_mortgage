@@ -45,7 +45,12 @@ async function listView() {
     discoveries.length === 0 ? el('p', { class: 'muted' }, 'You haven’t picked anything up yet.') :
     el('ul', { class: 'list-plain' }, ...discoveries.map((d) => el('li', {},
       el('a', { href: `/jada/discoveries/${d.id}` }, d.firmName), ' ',
-      el('span', { class: 'muted' }, `${d.packsToReview} pack${d.packsToReview === 1 ? '' : 's'} to review, ${d.openEscalations} open escalation${d.openEscalations === 1 ? '' : 's'}`)))));
+      el('span', { class: 'muted' }, `${d.packsToReview} pack${d.packsToReview === 1 ? '' : 's'} to review, ${d.openEscalations} open escalation${d.openEscalations === 1 ? '' : 's'}`), ' ',
+      // Handing a discovery back ends access to that firm's data straight away.
+      d.packsToReview === 0 && d.openEscalations === 0 ? el('button', { class: 'btn', onclick: async () => {
+        if (!confirm(`Hand ${d.firmName} back? You’ll lose access to its discovery straight away.`)) return;
+        try { await api(`/api/jada/discoveries/${d.id}/release`, 'POST'); location.reload(); } catch (err) { out.textContent = err.message; }
+      } }, 'Release') : null))));
 }
 
 function reviewForm(pack, refresh) {

@@ -59,6 +59,12 @@ const sum = (xs, f) => xs.reduce((n, x) => n + (f(x) || 0), 0);
 
 /* ============================================================ vocabulary (matches the existing API) */
 const ROLES = { firm_lead: 'Firm owner / MD', adviser: 'Mortgage adviser', case_manager: 'Case manager', administrator: 'Administrator', other: 'Other operational staff' };
+// One status for a discovery wherever it's shown. With the later stages off, a discovery is complete once
+// its report exists and at least one opportunity is approved (approvals are made one at a time).
+function discoveryStatus(s) {
+  if (!FEATURES.laterStages && s.status === 'review_ready' && s.reportedAt && s.approved) return ['Discovery complete', 'success'];
+  return DISCOVERY_STATUS[s.status] || [s.status, 'neutral'];
+}
 const DISCOVERY_STATUS = {
   profile: ['Firm profile needed', 'warning'], interviews: ['Interviews', 'info'], review_ready: ['Ready for opportunity review', 'info'], priorities_approved: ['Priorities approved', 'success'],
 };
@@ -182,8 +188,8 @@ function profileCompleteness(p) {
 }
 const techCount = (p) => (p?.technology || []).length;
 
-function nextAction(ws) {
-  const d = latestDiscovery(ws); const p = profileOf(ws);
+function nextAction(ws, d = latestDiscovery(ws)) {
+  const p = profileOf(ws);
   if (!d) return { title: 'Start your first discovery', text: 'A discovery maps how work moves through your firm. It begins with a short firm profile, then independent interviews with the people who do the work.', start: true, label: 'Start a discovery' };
   if (!p) return { title: 'Complete your firm profile', text: 'A few details about your firm give the interviews the right context.', href: '/app/profile', label: 'Complete firm profile' };
   if (!techCount(p)) return { title: 'Add your technology inventory', text: 'Record the systems your firm already uses, so recommendations build on what you have before suggesting anything new.', href: '/app/profile/technology', label: 'Add technology' };
@@ -243,7 +249,7 @@ function overview(ws) {
   }
 
   const comp = profileCompleteness(p);
-  const [dLabel, dVariant] = DISCOVERY_STATUS[d.status] || [d.status, 'neutral'];
+  const [dLabel, dVariant] = discoveryStatus(d);
   const steps = [
     { title: 'Firm profile', state: p ? (comp.provided === comp.total ? 'done' : 'active') : 'todo', detail: p ? `${comp.provided} of ${comp.total} details provided` : 'Not started', href: '/app/profile' },
     { title: 'Technology inventory', state: techCount(p) ? 'done' : 'todo', detail: techCount(p) ? plural(techCount(p), 'system') + ' recorded' : (p?.systems?.length ? `${plural(p.systems.length, 'system')} listed in your profile, not yet in the inventory` : 'Not started'), href: '/app/profile/technology' },
@@ -572,7 +578,7 @@ function discoveryList(ws) {
   return { crumbs, nodes: [head, el('div', { class: 'ds-table-wrap' }, el('table', { class: 'ds-table' },
     el('thead', {}, el('tr', {}, ...['Started', 'Status', 'Interviews', 'Findings', 'Last updated'].map((h) => el('th', { scope: 'col' }, h)), el('th', { scope: 'col' }, el('span', { class: 'ds-visually-hidden' }, 'Actions')))),
     el('tbody', {}, ...ws.discoveries.map((d) => {
-      const [l, v] = DISCOVERY_STATUS[d.status] || [d.status, 'neutral'];
+      const [l, v] = discoveryStatus(d);
       return el('tr', {},
         el('th', { scope: 'row' }, el('a', { href: `/app/discovery/${d.id}` }, fmtDate(d.createdAt))),
         el('td', {}, status(l, v)),

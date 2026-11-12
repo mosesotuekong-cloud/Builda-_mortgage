@@ -41,7 +41,7 @@ export function businessCase(i: BusinessCaseInputs): BusinessCase {
   const cash = v('monthlyCashSavingGBP');
   const hrsPerCase = v('staffHoursPerCase');
   const additionalCases = time.monthlyHoursRecovered !== null && hrsPerCase !== null && hrsPerCase > 0
-    ? Math.floor((time.monthlyHoursRecovered / hrsPerCase) * 10) / 10 : null;
+    ? Math.floor(time.monthlyHoursRecovered / hrsPerCase) : null;   // whole cases only
   const perCase = v('revenuePerCaseGBP');
   const revenue = additionalCases !== null && perCase !== null && i.demandConfirmed ? Math.round(additionalCases * perCase) : null;
   if (cash === null && revenue === null) {
@@ -66,7 +66,7 @@ export function businessCase(i: BusinessCaseInputs): BusinessCase {
     },
     capacity: {
       additionalCasesPerMonth: additionalCases,
-      method: additionalCases === null ? 'Needs the hours saved and how many staff hours one case takes.' : 'Hours saved ÷ staff hours per case, rounded down.',
+      method: additionalCases === null ? 'Needs the hours saved and how many staff hours one case takes.' : 'Hours saved ÷ staff hours per case, rounded down to whole cases.',
     },
     revenue: {
       monthlyPotentialGBP: revenue,

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { withFirmContext, type Db, type FirmContext } from '../db/pool';
+import { withFirmContext, withJadaContext, type Db, type FirmContext } from '../db/pool';
 import { NotFoundError } from '../db/repositories';
 import { SEED_PLAYBOOK, type Playbook } from './playbook';
 import { CLASSIFICATIONS, ROLES, ROLE_LABELS, STAGE_IDS, STAGES } from '../domain/journey';
@@ -159,7 +159,7 @@ export class KnowledgeService {
   async candidates(userId: string) {
     await this.need(userId, ['knowledge_editor', 'compliance_reviewer']);
     const known = (await this.db.query("select distinct key from knowledge_items where kind = 'card'")).rows.map((x) => x.key);
-    const r = await this.db.query('select * from knowledge_candidates($1, $2)', [userId, [...known, ...SEED_PLAYBOOK.cards.map((c) => c.id)]]);
+    const r = await withJadaContext(this.db, userId, (tx) => tx.query('select * from knowledge_candidates($1)', [[...known, ...SEED_PLAYBOOK.cards.map((c) => c.id)]]));
     return r.rows.map((x) => ({ key: x.key, title: x.title, stageId: x.stage_id, firms: Number(x.firms) }));
   }
 

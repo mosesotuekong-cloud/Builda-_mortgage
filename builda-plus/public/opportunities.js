@@ -55,7 +55,7 @@ function dashboard(ws, intel, picker) {
     sel('stage', 'Stage', stages), sel('classification', 'Approach', Object.entries(CLASSIFICATION).map(([k, [, l]]) => [k, l])),
     sel('priority', 'Priority', [['High', 'High'], ['Medium', 'Medium'], ['Low', 'Low'], ['unranked', 'Not ranked']]),
     sel('confidence', 'How sure', Object.entries(CONFIDENCE).map(([k, [, l]]) => [k, l])),
-    sel('status', 'Status', Object.entries(OPP_STATUS).filter(([k]) => FEATURES.laterStages || k !== 'sent_to_engineering').map(([k, [l]]) => [k, l])));
+    sel('status', 'Status', Object.entries(OPP_STATUS).filter(([k]) => (FEATURES.laterStages || k !== 'sent_to_engineering') && k !== 'keep_human').map(([k, [l]]) => [k, l])));   // keep human is an approach: it's under Approach
   const results = el('div', {});
   const apply = () => {
     const f = Object.fromEntries([...new FormData(filters)].filter(([, v]) => v));
@@ -82,6 +82,8 @@ function totals(list, s) {
   const sized = list.filter((o) => o.classification !== 'keep_human' && o.businessCase && o.businessCase.timeRecovered.monthlyHoursSpent !== null);
   const sum = (f) => sized.reduce((n, o) => n + (f(o.businessCase.timeRecovered) || 0), 0);
   const spent = sum((t) => t.monthlyHoursSpent), freed = sum((t) => t.monthlyHoursRecovered);
+  // Hours freed up need a second figure (the share that could be saved), so they usually cover fewer problems.
+  const estimated = sized.filter((o) => o.businessCase.timeRecovered.monthlyHoursRecovered !== null);
   const priced = sized.filter((o) => o.businessCase.timeRecovered.valueAtStatedCostGBP !== null);
   const yearly = priced.reduce((n, o) => n + o.businessCase.timeRecovered.valueAtStatedCostGBP * 12, 0);
   const of = `${sized.length} of ${s.total}`;
@@ -89,11 +91,15 @@ function totals(list, s) {
   return el('div', { class: 'ds-stack' },
     el('dl', { class: 'ws-stats op-stats' },
       stat('Staff time lost a month', sized.length ? `${num(spent)} hours` : 'Not known yet', sized.length ? `from the ${of} problems with figures` : 'No figures given yet'),
-      stat('Could be freed up a month', sized.length ? `${num(freed)} hours` : 'Not known yet', priced.length ? `≈ ${gbp(yearly)} a year in staff time` : null),
+      stat('Could be freed up a month', estimated.length ? `${num(freed)} hours` : 'Not estimated yet',
+        estimated.length ? `from ${plural(estimated.length, 'problem')} with an estimate${priced.length ? ` · ≈ ${gbp(yearly)} a year in staff time` : ''}` : null),
       stat('Problems found', String(s.total), `${s.prioritised} ranked, ${s.total - s.prioritised} not ranked yet`),
       stat('Waiting for your decision', String(s.readyForReview), null),
       stat('Approved', String(s.approved), null)),
-    sized.length < s.total ? el('p', { class: 'ds-help' }, `Totals cover only the ${of} problems where someone has said how often it happens and how long it takes. Nobody has given figures for the rest yet.`) : null);
+    sized.length < s.total || estimated.length < sized.length ? el('p', { class: 'ds-help' }, [
+      sized.length < s.total ? `Staff time covers only the ${of} problems where someone has said how often it happens and how long it takes. Nobody has given figures for the rest yet.` : null,
+      estimated.length < sized.length ? `Time that could be freed up has been estimated for ${estimated.length} of those ${sized.length} so far, so that total will grow as estimates are added.` : null,
+    ].filter(Boolean).join(' ')) : null);
 }
 
 // The business picture for one analysed discovery, for the overview pages: the same totals as the
@@ -176,6 +182,7 @@ function methodSection(intel) {
   return section('How the ranking works', null, el('details', { class: 'op-details' }, el('summary', {}, 'Fixed rules, no AI'),
     el('div', { class: 'op-details__body ds-stack ds-body-sm' },
       el('p', {}, `Each opportunity gets a score out of 100 from six things, weighted: ${Object.entries(w).map(([k, v]) => `${PLAIN[k] || k} ${Math.round(v * 100)}%`).join(', ')}. High priority is ${intel.scoring.bands.high} or more; medium is ${intel.scoring.bands.medium} or more.`),
+      el('p', {}, 'Problems where someone has said how much staff time they take come first; ones nobody has sized yet follow, however they score, so a problem with no figures never outranks one with them.'),
       el('p', {}, 'Each opportunity’s page shows value, ease of building, strength of evidence and regulatory safety separately, so a big estimate can’t hide weak evidence or regulatory risk.'),
       el('p', {}, 'Some things keep an opportunity out of the ranking, however large it is: nobody at your firm has described it, it involves regulated advice and needs a compliance review, or it is work best left with people.'),
       el('p', { class: 'ws-subtle' }, `Rules version: ${intel.scoring.version}`))));
@@ -298,7 +305,7 @@ function caseView(intel, o) {
         t.valueAtStatedCostGBP !== null ? el('span', { class: 'ws-subtle' }, `Worth ${gbp(t.valueAtStatedCostGBP)} a month in staff time at your hourly cost (not money saved)`) : null),
       value('Money saved', bc.cashSavings.monthlyGBP === null ? 'None stated' : `${gbp(bc.cashSavings.monthlyGBP)} / month`, bc.cashSavings.method,
         bc.cashSavings.basis ? el('span', { class: 'ws-subtle' }, `Basis: ${bc.cashSavings.basis}`) : null),
-      value('Extra cases you could take on', bc.capacity.additionalCasesPerMonth === null ? 'Unknown' : `${num(bc.capacity.additionalCasesPerMonth)} more cases / month`, bc.capacity.method),
+      value('Extra cases you could take on', bc.capacity.additionalCasesPerMonth === null ? 'Unknown' : `${plural(bc.capacity.additionalCasesPerMonth, 'more case', 'more cases')} / month`, bc.capacity.method),
       value('Extra revenue', bc.revenue.monthlyPotentialGBP === null ? 'Not estimated' : `${gbp(bc.revenue.monthlyPotentialGBP)} / month`, bc.revenue.method)),
     el('div', { class: 'dw-figure' }, el('span', { class: 'ws-subtle' }, 'Payback'), el('strong', {}, bc.payback.months === null ? 'Not calculated' : `${num(bc.payback.months)} months`), el('span', { class: 'ds-body-sm' }, bc.payback.reason)),
     el('div', { class: 'ds-table-wrap' }, el('table', { class: 'ds-table' }, el('caption', {}, 'The figures used, and where each came from'),

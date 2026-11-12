@@ -1,7 +1,13 @@
 # Pilot remediation specification
 
-Status: **specification only. Nothing here is implemented.** Each item needs approval before work starts,
-and every database change is a new numbered migration in `db/` (none written yet).
+Status (12 Nov 2026): **P-1, R2 and R3 are implemented; R1 (production sign-in) is not.**
+- P-1: only people's own accounts count toward the quote threshold.
+- R2: `db/009_function_identity.sql`. Not done, because it needs R1: deriving `app_user()`/`app_org()` from a
+  server-side session, and the `jada_admin` role for releasing someone else's assignment. Automatic release after
+  30 days isn't built either; the assigned engineer releases from the JADA screen.
+- R3: `db/010_retention.sql`, `scripts/retention.ts`, consent `consent-2026-11-v2` (draft wording, needs DPIA
+  review). JADA takes withdrawal requests through `npm run retention -- withdraw …` rather than a form. Both consent
+  versions get the strict treatment (all interview free text removed, not only quotes).
 
 Three blockers from the Phase 6 readiness report, plus one privacy defect found while preparing the demo
 (P-1, section 4). The order matters: R1 (authentication) gives R2 a trustworthy identity to check, and R3

@@ -170,6 +170,12 @@ export function buildApp(deps: AppDeps) {
     return p;
   };
   const pctx = (p: ParticipantPrincipal) => ({ orgId: p.orgId });
+  // Every participant route: refused once the person has withdrawn or the discovery's content is deleted.
+  const activeParticipant = async (req: FastifyRequest): Promise<ParticipantPrincipal> => {
+    const p = participant(req);
+    await deps.participants.ensureActive(pctx(p), p.participantId);
+    return p;
+  };
 
   app.get<{ Params: { token: string } }>('/i/:token', async (req, reply) => {
     const resolved = await deps.participants.resolveInvitation(req.params.token);
@@ -179,7 +185,7 @@ export function buildApp(deps: AppDeps) {
   });
 
   app.get('/api/me', async (req) => {
-    const p = participant(req);
+    const p = await activeParticipant(req);
     const info = await deps.participants.participantContext(pctx(p), p.participantId);
     const session = info.consented ? await deps.interviews.startOrResume(pctx(p), p.participantId) : null;
     return {
@@ -189,19 +195,31 @@ export function buildApp(deps: AppDeps) {
     };
   });
   app.post<{ Body: { version: string } }>('/api/consent', async (req) => {
-    const p = participant(req);
+    const p = await activeParticipant(req);
     await deps.participants.recordConsent(pctx(p), p.participantId, String(req.body?.version ?? ''));
     return deps.interviews.startOrResume(pctx(p), p.participantId);
   });
   app.post<{ Body: { text: string } }>('/api/interview/message', async (req) => {
-    const p = participant(req);
+    const p = await activeParticipant(req);
     const text = String(req.body?.text ?? '').trim();
     if (!text) throw Object.assign(new Error('Type an answer before sending.'), { statusCode: 400 });
     return deps.interviews.submitForParticipant(pctx(p), p.participantId, text);
   });
   app.post('/api/interview/pause', async (req) => {
-    const p = participant(req);
+    const p = await activeParticipant(req);
     return deps.interviews.pauseForParticipant(pctx(p), p.participantId);
+  });
+  // Withdrawal (R3): the person's interview and words are removed everywhere. If the interviews were
+  // already analysed, the analysis is re-run without them in the background, so findings stop counting them.
+  app.post('/api/interview/withdraw', async (req, reply) => {
+    const p = await activeParticipant(req);
+    const r = await deps.participants.withdraw(pctx(p), p.participantId);
+    reply.clearCookie('bp_p', { path: '/' });
+    if (r.reanalyse) {
+      void deps.analysis.analyse({ orgId: p.orgId, userId: '', actor: 'system:withdrawal' }, r.discoveryId)
+        .catch((err) => req.log.error({ err: (err as Error).message }, 're-analysis after a withdrawal failed'));
+    }
+    return { withdrawn: true };
   });
 
   // ---------- firm lead ----------
@@ -233,7 +251,9 @@ export function buildApp(deps: AppDeps) {
   app.post<P>('/api/firm/discoveries/:id/follow-ups', async (req) => deps.analysis.sendFollowUps(await lead(req), req.params.id));
   app.get<P>('/api/firm/discoveries/:id/playback', async (req) => { const id = await lead(req); await deps.firms.ensureDiscovery(id, req.params.id); return deps.analysis.playback(id, req.params.id); });
   // Phase 3: discovery workspace, evidence review and completion.
-  app.get<P>('/api/firm/discoveries/:id/workspace', async (req) => deps.analysis.discoveryWorkspace(await lead(req), req.params.id));
+  app.get<P>('/api/firm/discoveries/:id/workspace', async (req) => ({
+    ...(await deps.analysis.discoveryWorkspace(await lead(req), req.params.id)), retentionMonths: deps.consent.retentionMonths }));
+  app.post<P>('/api/firm/discoveries/:id/close', async (req) => deps.firms.closeDiscovery(await lead(req), req.params.id));
   app.post<P>('/api/firm/discoveries/:id/evidence/:pid/review', async (req) => {
     const id = await lead(req);
     await deps.analysis.reviewEvidence(id, req.params.id, req.params.pid!, req.body);
@@ -308,6 +328,7 @@ export function buildApp(deps: AppDeps) {
   app.get('/api/jada/discoveries', async (req) => ({ discoveries: await deps.jada.assignedDiscoveries(await jadaUser(req)) }));
   app.get('/api/jada/queue', async (req) => ({ queue: await deps.jada.queue(await jadaUser(req)) }));
   app.post<P>('/api/jada/discoveries/:id/pick-up', async (req) => { await deps.jada.pickUp(await engineer(req), req.params.id); return { ok: true }; });
+  app.post<P>('/api/jada/discoveries/:id/release', async (req) => { await deps.jada.release(await engineer(req), req.params.id); return { ok: true }; });
   app.get<P>('/api/jada/discoveries/:id', async (req) => deps.jada.discovery(await jadaUser(req), req.params.id));
   // What the knowledge engine has understood about an assigned discovery: by role, no quotes (read-only).
   app.get<P>('/api/jada/discoveries/:id/knowledge', async (req) => {

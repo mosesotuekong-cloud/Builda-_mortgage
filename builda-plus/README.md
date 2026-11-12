@@ -150,6 +150,16 @@ regulatory checks and trusted sources (title, reference, publisher, date, sectio
 - Deployment note: the knowledge_candidates() function must be owned by a role that bypasses
   row-level security, since it aggregates across firms.
 
+## Retention, deletion and withdrawal (R3)
+- The firm lead closes a discovery when it's finished; interviews are deleted RETENTION_MONTHS later (or that long
+  after 90 days with no activity, if it's never closed). The discovery Overview shows the date.
+- `npm run retention` (daily) runs as its own database role, `builda_retention`, set up by `npm run migrate` from
+  RETENTION_DATABASE_URL. It removes every quote, answer, transcript, name and email, including from report and pack
+  snapshots, and keeps de-identified findings, figures and decisions. Each run is logged in `retention_events`, with
+  counts and no content.
+- A participant can withdraw from their interview page at any time; their words go everywhere and the analysis
+  re-runs without them. JADA records phone or email requests with `npm run retention -- withdraw <participant id> --requested-by "<name>"`.
+
 ## Reports and implementation packs (milestones 9–10)
 - Neither the report nor the pack is written by the AI. Both are assembled from stored findings,
   the playbook card and the JADA template; anything not covered says so instead of being filled in.

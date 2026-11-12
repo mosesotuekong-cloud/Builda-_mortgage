@@ -1,3 +1,4 @@
+import { withJadaContext } from '../src/db/pool';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import pg from 'pg';
 import { randomUUID } from 'node:crypto';
@@ -118,6 +119,8 @@ describe.skipIf(!APP || !ADMIN)('knowledge base workflow (Postgres)', () => {
     expect(c).toEqual([{ key: 'diary_juggling', title: 'Title for diary_juggling', stageId: 'enquiry', firms: 2 }]);
     expect(JSON.stringify(c)).not.toMatch(/Alpha|Beta/);
     await expect(kb.candidates(outsider)).rejects.toBeInstanceOf(KnowledgeForbiddenError);
-    expect((await db.query('select * from knowledge_candidates($1, $2)', [outsider, []])).rows).toEqual([]); // function checks the caller too
+    // The function checks the caller too: from the transaction's identity, and nothing without one.
+    expect((await withJadaContext(db, outsider, (tx) => tx.query('select * from knowledge_candidates($1)', [[]]))).rows).toEqual([]);
+    expect((await db.query('select * from knowledge_candidates($1)', [[]])).rows).toEqual([]);
   });
 });

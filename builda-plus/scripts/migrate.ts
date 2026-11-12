@@ -30,6 +30,11 @@ for (const f of files) {
     process.exit(1);
   }
 }
+// Production never needs the push-button sign-in's list of every firm's accounts (R2).
+if (process.env.NODE_ENV === 'production') {
+  await db.query('revoke execute on function signin_directory() from builda_app');
+  console.log('production: the sign-in directory function is not available to the app');
+}
 // The app connects as builda_app (so row-level security applies). Give it the password in DATABASE_URL.
 if (appUrl) {
   const u = new URL(appUrl);
@@ -39,6 +44,15 @@ if (appUrl) {
   } else {
     console.log('Note: DATABASE_URL should connect as builda_app, e.g. postgres://builda_app:<password>@localhost:5432/builda');
   }
+}
+// The daily retention job connects as builda_retention (R3). Give it the password in RETENTION_DATABASE_URL.
+const retentionUrl = process.env.RETENTION_DATABASE_URL;
+if (retentionUrl) {
+  const u = new URL(retentionUrl);
+  if (u.username === 'builda_retention' && u.password) {
+    await db.query(`alter role builda_retention with login password ${pg.escapeLiteral(decodeURIComponent(u.password))}`);
+    console.log('set the password for builda_retention from RETENTION_DATABASE_URL');
+  } else console.log('Note: RETENTION_DATABASE_URL should connect as builda_retention');
 }
 await db.end();
 console.log('Database ready.');

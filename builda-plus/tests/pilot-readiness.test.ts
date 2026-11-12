@@ -22,6 +22,15 @@ describe('pilot readiness guards', () => {
     expect(text).not.toMatch(/then deleted/);
   });
 
+  it('the consent text (v2) says what is deleted, what is kept, and how to withdraw', () => {
+    const s = consentSections({ retentionMonths: 12, jadaContact: 'Jo at JADA', firmName: 'Test' });
+    const keep = s.find((x) => x.heading === 'Keeping your information')!.body;
+    expect(keep).toMatch(/12 months/);
+    expect(keep).toMatch(/your name and email address/);
+    expect(keep).toMatch(/doesn’t identify you or contain your words/);
+    expect(s.find((x) => x.heading === 'Changing your mind')!.body).toMatch(/Withdraw my interview.*Jo at JADA.*don’t have to give a reason/s);
+  });
+
   it('no template is production-ready, and the Outlook template stays gated on the spike', () => {
     const matrix = SOLUTION_TEMPLATES.map((t) => ({ id: t.id, reviewed: t.approval.status === 'reviewed', tested: t.validation === 'tested', ready: readiness(t).productionReady }));
     expect(matrix).toEqual([

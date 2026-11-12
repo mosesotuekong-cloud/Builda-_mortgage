@@ -18,7 +18,8 @@ import { startFollowUp } from '../interview/orchestrator';
 import type { Mailer } from '../firm/mailer';
 import { hashToken, newInvitationToken } from '../http/tokens';
 
-type Actor = FirmContext & { userId: string };
+// actor: who to record in the audit log when it isn't a signed-in user (for example 'system:withdrawal').
+type Actor = FirmContext & { userId: string; actor?: string };
 
 export interface PainPointSummary {
   evidenceIds: string[]; roles: Role[]; participantCount: number;
@@ -160,7 +161,7 @@ export class AnalysisService {
         [discoveryId, findings.painPoints.map((p) => p.key)]);
       await tx.query('insert into analysis_runs (org_id, discovery_id, findings, key_merges, playbook_version) values ($1,$2,$3,$4,$5)',
         [ctx.orgId, discoveryId, JSON.stringify({ ...findingsForStorage(findings), firmLeadInterviewed, notProblems: [...notProblems] }), JSON.stringify(merged.applied), playbook.version]);
-      await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: 'analysis.run',
+      await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: ctx.actor ?? `user:${ctx.userId}`, action: 'analysis.run',
         metadata: { painPoints: findings.painPoints.length, merges: merged.applied.length, mergeUnavailable, classified: [...classifications.values()].filter(Boolean).length } }]);
     });
     await this.rescore(ctx, discoveryId);
@@ -260,7 +261,7 @@ export class AnalysisService {
       const groups = new Map((await tx.query(
         `select p.role, count(distinct e.participant_pseudonym)::int as n from evidence_records e
            join participants p on p.discovery_id = e.discovery_id and p.pseudonym = e.participant_pseudonym
-          where e.discovery_id = $1 group by p.role`, [discoveryId])).rows.map((r) => [r.role as string, r.n as number]));
+          where e.discovery_id = $1 and e.source = 'firm_said' group by p.role`, [discoveryId])).rows.map((r) => [r.role as string, r.n as number]));
       const quotable = (role: string) => role === 'firm_lead' || (groups.get(role) ?? 0) >= QUOTE_MIN_GROUP;
 
       const painPoints = rows.rows.map((x) => ({
@@ -355,7 +356,9 @@ export class AnalysisService {
       const dr = await tx.query(
         `select d.id, d.status, d.created_at, d.firm_profile, d.playbook_version, o.name as firm_name,
                 greatest(d.created_at, (select max(created_at) from audit_log l where l.discovery_id = d.id)) as updated_at,
-                (select max(created_at) from reports r where r.discovery_id = d.id) as reported_at
+                (select max(created_at) from reports r where r.discovery_id = d.id) as reported_at, d.closed_at, d.content_purged_at,
+                greatest(d.created_at, (select max(created_at) from audit_log l where l.discovery_id = d.id)) as last_activity_at,
+                (select count(*)::int from participants p where p.discovery_id = d.id and p.withdrawn_at is not null) as withdrawals
            from discoveries d join organisations o on o.id = d.org_id where d.id = $1`, [discoveryId]);
       const d = dr.rows[0];
       if (!d) throw new NotFoundError('Discovery not found');
@@ -384,7 +387,8 @@ export class AnalysisService {
       const byKey = new Map(pb.painPoints.map((p) => [p.key, p]));
       const reviewOf = (id: string) => reviews.get(id) ?? { status: 'unreviewed', reason: null, at: null };
       const contributors = new Map<string, Set<string>>();
-      for (const e of merged) contributors.set(e.role, (contributors.get(e.role) ?? new Set()).add(e.participantRef));
+      // Only people's own accounts count: a record attributed to a role isn't another person (P-1).
+      for (const e of merged) if (e.source === 'firm_said') contributors.set(e.role, (contributors.get(e.role) ?? new Set()).add(e.participantRef));
       const quoteAllowed = (role: string) => role === 'firm_lead' || (contributors.get(role)?.size ?? 0) >= QUOTE_MIN_GROUP;
       const SOURCE: Record<string, string> = { firm_said: 'employee_reported', operational_record: 'measured', measured_baseline: 'measured', playbook: 'industry_knowledge', assumption: 'assumption' };
 
@@ -472,7 +476,9 @@ export class AnalysisService {
       ];
       return {
         discovery: { id: d.id as string, name: `Discovery started ${new Date(d.created_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}`,
-          status: d.status as string, createdAt: d.created_at, updatedAt: d.updated_at, analysedAt: pb.analysedAt, reportedAt: d.reported_at, knowledgeVersion: d.playbook_version as string },
+          status: d.status as string, createdAt: d.created_at, updatedAt: d.updated_at, analysedAt: pb.analysedAt, reportedAt: d.reported_at, knowledgeVersion: d.playbook_version as string,
+          // Retention (R3): counted from closing, or from 90 days after the last activity if never closed.
+          closedAt: d.closed_at, contentPurgedAt: d.content_purged_at, lastActivityAt: d.last_activity_at, withdrawals: d.withdrawals as number },
         firmName: d.firm_name as string,
         profile: profile.success ? profile.data : null,
         participants, roles, stages, evidence, findings,

@@ -150,7 +150,8 @@ export class JadaService {
 
   // Discoveries waiting for an engineer (firm name and reason only) and picking one up.
   async queue(userId: string) {
-    const r = await this.db.query('select * from jada_queue($1)', [userId]);
+    // The database function reads the caller from the transaction's identity, never from a parameter.
+    const r = await withJadaContext(this.db, userId, (tx) => tx.query('select * from jada_queue()'));
     // The database function's wording predates fix and overhaul submissions; say what is actually waiting.
     const REASON: Record<string, string> = { 'Priorities approved — implementation pack ready': 'Approved opportunities sent for engineering review' };
     return r.rows.map((x) => ({ discoveryId: x.discovery_id, firmName: x.firm_name, reason: REASON[x.reason] ?? x.reason, since: x.since }));
@@ -161,11 +162,18 @@ export class JadaService {
   }
 
   async pickUp(userId: string, discoveryId: string): Promise<void> {
-    // Phase 6: only discoveries that are actually waiting in the queue can be picked up. The database
-    // function itself accepts any discovery id; tightening it there needs a migration (pilot blocker list).
+    // The queue check stays as defence in depth; the database function now enforces the same rules itself.
     if (!(await this.queue(userId)).some((q) => q.discoveryId === discoveryId)) throw new NotFoundError('That discovery isn’t waiting to be picked up.');
-    const r = await this.db.query('select jada_pick_up($1, $2) as ok', [userId, discoveryId]);
-    if (!r.rows[0].ok) throw Object.assign(new Error('Only JADA engineers can pick up discoveries.'), { statusCode: 403 });
+    const r = await withJadaContext(this.db, userId, (tx) => tx.query('select jada_pick_up($1) as result', [discoveryId]));
+    const result = r.rows[0].result as string;
+    if (result === 'not_engineer' || result === 'no_identity') throw Object.assign(new Error('Only JADA engineers can pick up discoveries.'), { statusCode: 403 });
+    if (result !== 'ok') throw new NotFoundError('That discovery isn’t waiting to be picked up.');
+  }
+
+  // Hands a discovery back: the engineer's access to it ends immediately.
+  async release(userId: string, discoveryId: string): Promise<void> {
+    const r = await withJadaContext(this.db, userId, (tx) => tx.query('select jada_release($1) as ok', [discoveryId]));
+    if (!r.rows[0].ok) throw new NotFoundError('You aren’t assigned to that discovery.');
   }
 
   async assignedDiscoveries(userId: string) {

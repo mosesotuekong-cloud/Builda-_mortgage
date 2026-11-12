@@ -112,9 +112,10 @@ export function assessOpportunities(dw: DiscoveryWorkspace, playbook: Playbook, 
         ? 'No score under the current rules: re-run the analysis to reassess it.' : null,
     };
   });
-  // Priority order: only rankable items, by the existing deterministic score (ties: hours recovered, then id).
+  // Priority order: only rankable items; sized problems first, then by the existing deterministic score (ties: hours recovered, then id).
   const rankable = list.filter((o) => o.band !== null && o.status !== 'rejected')
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0)
+    .sort((a, b) => Number((a.businessCase?.timeRecovered.monthlyHoursSpent ?? null) === null) - Number((b.businessCase?.timeRecovered.monthlyHoursSpent ?? null) === null)
+      || (b.score ?? 0) - (a.score ?? 0)
       || (b.businessCase?.timeRecovered.monthlyHoursRecovered ?? -1) - (a.businessCase?.timeRecovered.monthlyHoursRecovered ?? -1) || a.id.localeCompare(b.id));
   rankable.forEach((o, i) => { o.priorityRank = i + 1; });
   return list.sort((a, b) => (a.priorityRank ?? 1e9) - (b.priorityRank ?? 1e9) || a.title.localeCompare(b.title));

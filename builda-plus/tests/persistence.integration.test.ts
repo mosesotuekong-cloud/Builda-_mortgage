@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import pg from 'pg';
+import { randomUUID } from 'node:crypto';
 import { InterviewService, ConsentRequiredError, SessionClosedError, InterviewTurnFailedError } from '../src/interview/service';
 import { ConcurrencyError, NotFoundError, loadSession, saveSession } from '../src/db/repositories';
 import { withFirmContext } from '../src/db/pool';
@@ -11,10 +12,12 @@ import { SEED_PLAYBOOK } from '../src/knowledge/playbook';
 // Requires: TEST_DATABASE_URL (role builda_app) and TEST_ADMIN_DATABASE_URL (superuser, for seeding).
 const APP = process.env.TEST_DATABASE_URL, ADMIN = process.env.TEST_ADMIN_DATABASE_URL;
 
-const ORG_A = '00000000-0000-0000-0000-00000000000a', ORG_B = '00000000-0000-0000-0000-00000000000b';
-const DISC_A = '10000000-0000-0000-0000-00000000000a', DISC_B = '10000000-0000-0000-0000-00000000000b';
-const P1 = '20000000-0000-0000-0000-000000000001', P2 = '20000000-0000-0000-0000-000000000002', PB = '20000000-0000-0000-0000-0000000000b1';
-const A = { orgId: ORG_A }, B = { orgId: ORG_B };
+// Each test gets two new firms of its own instead of truncating shared tables: a truncate needs an exclusive
+// lock on every table and stalls behind any connection an earlier test file left open. Every check reads
+// only these two firms' rows, so data left by other files can't leak into the assertions.
+let ORG_A = '', ORG_B = '', DISC_A = '', DISC_B = '', P1 = '', P2 = '', PB = '';
+let A = { orgId: '' }, B = { orgId: '' };
+const mine = () => [[ORG_A, ORG_B]];
 
 const noFlags = { clientInformation: false, complaintOrCompliance: false, employmentIssue: false, adviceRequest: false, outOfScope: false };
 const interp = (over: Record<string, unknown> = {}) => ({ evidence: [], stagesConfirmedNotInvolved: [], flags: noFlags, wantsToPause: false, answerWasVague: false, ...over });
@@ -33,8 +36,8 @@ describe.skipIf(!APP || !ADMIN)('persistence (Postgres, RLS enforced)', () => {
   const service = () => new InterviewService(app, { providerFor: () => llm, playbook: SEED_PLAYBOOK });
 
   beforeEach(async () => {
-    await admin.query(`truncate organisations, org_members, discoveries, jada_assignments, participants, interview_sessions,
-      evidence_records, pain_points, opportunities, corrections, escalations, ai_usage, audit_log cascade`);
+    ORG_A = randomUUID(); ORG_B = randomUUID(); DISC_A = randomUUID(); DISC_B = randomUUID(); P1 = randomUUID(); P2 = randomUUID(); PB = randomUUID();
+    A = { orgId: ORG_A }; B = { orgId: ORG_B };
     await admin.query(`insert into organisations (id, name) values ($1,'Firm A'), ($2,'Firm B')`, [ORG_A, ORG_B]);
     await admin.query(`insert into discoveries (id, org_id, playbook_version, scoring_config_version, created_by)
       values ($1,$2,'0.1.0','v1',gen_random_uuid()), ($3,$4,'0.1.0','v1',gen_random_uuid())`, [DISC_A, ORG_A, DISC_B, ORG_B]);
@@ -50,7 +53,7 @@ describe.skipIf(!APP || !ADMIN)('persistence (Postgres, RLS enforced)', () => {
     expect(first.resumed).toBe(false);
     expect(again.resumed).toBe(true);
     expect(again.sessionId).toBe(first.sessionId);
-    const audit = await admin.query('select action from audit_log order by id');
+    const audit = await admin.query('select action from audit_log where org_id = any($1) order by id', mine());
     expect(audit.rows.map((r) => r.action)).toEqual(['interview.started', 'interview.reopened']);
   });
 
@@ -64,11 +67,11 @@ describe.skipIf(!APP || !ADMIN)('persistence (Postgres, RLS enforced)', () => {
     const out = await service().submitMessage(A, s.sessionId, 'Documents mostly — about 150 a month, 20 minutes each.');
     expect(out.reply).toMatch(/track/);
 
-    const ev = await admin.query('select pain_point_key, monthly_volume, minutes_per_occurrence, participant_pseudonym, org_id from evidence_records');
+    const ev = await admin.query('select pain_point_key, monthly_volume, minutes_per_occurrence, participant_pseudonym, org_id from evidence_records where org_id = any($1)', mine());
     expect(ev.rows).toEqual([{ pain_point_key: 'document_chasing', monthly_volume: '150', minutes_per_occurrence: '20', participant_pseudonym: 'P1', org_id: ORG_A }]);
-    const sess = await admin.query('select version, status from interview_sessions');
+    const sess = await admin.query('select version, status from interview_sessions where org_id = any($1)', mine());
     expect(sess.rows[0]).toEqual({ version: 1, status: 'in_progress' });
-    const audit = await admin.query("select action from audit_log where action like 'interview.%' order by id");
+    const audit = await admin.query("select action from audit_log where org_id = any($1) and action like 'interview.%' order by id", mine());
     expect(audit.rows.map((r) => r.action)).toEqual(['interview.started', 'interview.evidence_added', 'interview.focus_changed']);
   });
 
@@ -79,10 +82,10 @@ describe.skipIf(!APP || !ADMIN)('persistence (Postgres, RLS enforced)', () => {
     expect(out.status).toBe('escalated');
     expect(llm.calls).toHaveLength(0);
 
-    const esc = await admin.query('select reason, details_redacted, status from escalations');
+    const esc = await admin.query('select reason, details_redacted, status from escalations where org_id = any($1)', mine());
     expect(esc.rows[0]).toMatchObject({ reason: 'client_information', status: 'open' });
     for (const [table, col] of [['interview_sessions', 'state'], ['audit_log', 'metadata'], ['escalations', 'details_redacted']]) {
-      const dump = await admin.query(`select string_agg(${col}::text, ' ') as t from ${table}`);
+      const dump = await admin.query(`select string_agg(${col}::text, ' ') as t from ${table} where org_id = any($1)`, mine());
       expect(dump.rows[0].t ?? '').not.toMatch(/Henderson|hb@example/);
     }
     await expect(service().submitMessage(A, s.sessionId, 'hello?')).rejects.toBeInstanceOf(SessionClosedError);
@@ -115,9 +118,9 @@ describe.skipIf(!APP || !ADMIN)('persistence (Postgres, RLS enforced)', () => {
     llm = new ScriptedProvider({}); // no scripted answer -> provider throws
     const s = await service().startOrResume(A, P1);
     await expect(service().submitMessage(A, s.sessionId, 'We do around 150 a month')).rejects.toBeInstanceOf(InterviewTurnFailedError);
-    const sess = await admin.query('select version from interview_sessions');
+    const sess = await admin.query('select version from interview_sessions where org_id = any($1)', mine());
     expect(sess.rows[0].version).toBe(0);
-    const audit = await admin.query("select metadata from audit_log where action = 'interview.turn_failed'");
+    const audit = await admin.query("select metadata from audit_log where org_id = any($1) and action = 'interview.turn_failed'", mine());
     expect(JSON.stringify(audit.rows[0].metadata)).not.toMatch(/150/);
   });
 

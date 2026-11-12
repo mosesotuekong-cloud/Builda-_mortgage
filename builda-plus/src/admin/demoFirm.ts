@@ -75,7 +75,7 @@ export async function createDemoFirm(db: Db, admin: pg.Pool, opts: { appBaseUrl:
   ];
   for (const [name, role] of PEOPLE) await firms.inviteParticipant(lead, discoveryId, { name, role });
   // P1 = lead, P2–P5 advisers, P6–P7 case managers, P8–P9 administrators (pseudonyms are assigned in order).
-  await admin.query(`update participants set consented_at = now() - interval '6 days', consent_version = 'consent-2026-11-v1' where discovery_id = $1`, [discoveryId]);
+  await admin.query(`update participants set consented_at = now() - interval '6 days', consent_version = 'consent-2026-11-v2' where discovery_id = $1`, [discoveryId]);
   await admin.query(`update invitations set first_used_at = now() - interval '6 days' where discovery_id = $1`, [discoveryId]);
   await admin.query(`insert into interview_sessions (id, org_id, discovery_id, participant_id, status, state, started_at, completed_at, kind)
     select gen_random_uuid(), p.org_id, p.discovery_id, p.id, 'completed', '{"transcript": [], "coverage": {}}'::jsonb, now() - interval '6 days', now() - interval '5 days', 'main'

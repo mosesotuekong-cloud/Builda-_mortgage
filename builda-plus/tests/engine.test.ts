@@ -55,6 +55,16 @@ describe('scoring', () => {
     expect(why[0]).toMatch(/^Time saved/);
     expect(why.some((w) => w.startsWith('Regulatory risk'))).toBe(true);
   });
+  it('puts a problem nobody has sized after one with known staff time, however it scores', () => {
+    const unsized = base({ id: 'unsized', classification: 'fix', complexity: 'low', confidence: 'high', monthlyVolume: null,
+      impact: calculateImpact({ monthlyVolume: null, minutesPerOccurrence: null, reductionPct: null, loadedHourlyCostGBP: null, implementationCostGBP: null }) });
+    const sized = base({ id: 'sized', classification: 'overhaul', templateAvailable: false, complexity: 'high', confidence: 'low', monthlyVolume: 40,
+      impact: calculateImpact({ monthlyVolume: 40, minutesPerOccurrence: 30, reductionPct: null, loadedHourlyCostGBP: null, implementationCostGBP: null }) });
+    const { ranked } = rankOpportunities([unsized, sized]);
+    expect(ranked[1]!.total).toBeGreaterThan(ranked[0]!.total);   // it would have won on score alone
+    expect(ranked.map((r) => r.input.id)).toEqual(['sized', 'unsized']);
+    expect(explainRanking(ranked[0]!, ranked[1]!)[0]).toMatch(/^Staff time: 20 hours a month here, not given yet/);
+  });
   it('excludes keep-human and insufficient-evidence items', () => {
     const { ranked, excluded } = rankOpportunities([base({ id: 'a', classification: 'keep_human' }), base({ id: 'b', confidence: 'insufficient' }), base({ id: 'c' })]);
     expect(ranked.map((r) => r.input.id)).toEqual(['c']);

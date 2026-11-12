@@ -12,7 +12,8 @@
     "start": "tsx src/server.ts",
     "seed": "tsx scripts/dev-seed.ts",
     "setup-demo": "tsx scripts/setup-demo.ts",
-    "delete-firm": "tsx scripts/delete-firm.ts"
+    "delete-firm": "tsx scripts/delete-firm.ts",
+    "retention": "tsx scripts/retention.ts"
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.5",

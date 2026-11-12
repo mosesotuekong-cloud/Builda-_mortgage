@@ -43,6 +43,16 @@ export class FirmService {
     if (!ok) throw new NotFoundError('Discovery not found');
   }
 
+  // The firm lead closes a discovery when it's finished: the retention period is counted from here.
+  async closeDiscovery(ctx: FirmContext & { userId: string }, discoveryId: string): Promise<{ closedAt: string }> {
+    return withFirmContext(this.db, ctx, async (tx) => {
+      const r = await tx.query('update discoveries set closed_at = coalesce(closed_at, now()) where id = $1 returning closed_at', [discoveryId]);
+      if (!r.rows[0]) throw new NotFoundError('Discovery not found');
+      await insertAudit(tx, [{ orgId: ctx.orgId, discoveryId, actor: `user:${ctx.userId}`, action: 'discovery.closed', entityType: 'discovery', entityId: discoveryId }]);
+      return { closedAt: r.rows[0].closed_at.toISOString() };
+    });
+  }
+
   async isFirmLead(ctx: FirmContext & { userId: string }): Promise<boolean> {
     return withFirmContext(this.db, ctx, async (tx) => {
       const r = await tx.query("select 1 from org_members where org_id = $1 and user_id = $2 and role = 'firm_lead'", [ctx.orgId, ctx.userId]);
@@ -127,8 +137,9 @@ export class FirmService {
   async newLink(ctx: FirmContext & { userId: string }, discoveryId: string, participantId: string): Promise<{ link: string }> {
     const token = newInvitationToken();
     await withFirmContext(this.db, ctx, async (tx) => {
-      const p = await tx.query('select pseudonym from participants where id = $1 and discovery_id = $2', [participantId, discoveryId]);
+      const p = await tx.query('select pseudonym, withdrawn_at from participants where id = $1 and discovery_id = $2', [participantId, discoveryId]);
       if (!p.rows[0]) throw new NotFoundError('Person not found');
+      if (p.rows[0].withdrawn_at) throw Object.assign(new Error('This person withdrew their interview, so it can’t be reopened.'), { statusCode: 409 });
       await tx.query('update invitations set expires_at = now() where participant_id = $1 and expires_at > now()', [participantId]);
       await tx.query(`insert into invitations (org_id, discovery_id, participant_id, token_hash, expires_at)
                       values ($1, $2, $3, $4, now() + make_interval(days => $5))`, [ctx.orgId, discoveryId, participantId, hashToken(token), this.cfg.invitationDays]);
@@ -250,6 +261,30 @@ export class ParticipantAccessService {
         `select p.role, p.consented_at, o.name as firm_name from participants p join organisations o on o.id = p.org_id where p.id = $1`, [participantId]);
       if (!r.rows[0]) throw new NotFoundError('Participant not found');
       return { role: r.rows[0].role as Role, consented: !!r.rows[0].consented_at, firmName: r.rows[0].firm_name as string };
+    });
+  }
+
+  // A withdrawn participant, or one whose discovery's content has been removed, can't use their link again.
+  async ensureActive(ctx: FirmContext, participantId: string): Promise<void> {
+    const r = await withFirmContext(this.db, ctx, (tx) => tx.query(
+      `select p.withdrawn_at, d.content_purged_at from participants p join discoveries d on d.id = p.discovery_id where p.id = $1`, [participantId]));
+    const row = r.rows[0];
+    if (!row) throw new NotFoundError('Participant not found');
+    if (row.withdrawn_at) throw Object.assign(new Error('You withdrew your interview, so it has been deleted. There’s nothing more to do.'), { statusCode: 410 });
+    if (row.content_purged_at) throw Object.assign(new Error('This discovery has finished and its interviews have been deleted.'), { statusCode: 410 });
+  }
+
+  // The participant withdraws through their own link: their interview and words are removed everywhere
+  // (database function withdraw_participant). Returns whether the findings need re-analysing.
+  async withdraw(ctx: FirmContext, participantId: string): Promise<{ discoveryId: string; reanalyse: boolean }> {
+    return withFirmContext(this.db, ctx, async (tx) => {
+      const p = await tx.query(
+        `select p.discovery_id, exists (select 1 from analysis_runs a where a.discovery_id = p.discovery_id) as analysed
+           from participants p where p.id = $1`, [participantId]);
+      if (!p.rows[0]) throw new NotFoundError('Participant not found');
+      const r = await tx.query("select withdraw_participant($1, 'participant') as counts", [participantId]);
+      if (!r.rows[0].counts) throw Object.assign(new Error('Your interview has already been withdrawn.'), { statusCode: 410 });
+      return { discoveryId: p.rows[0].discovery_id as string, reanalyse: p.rows[0].analysed as boolean };
     });
   }
 
