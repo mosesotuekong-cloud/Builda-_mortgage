@@ -262,6 +262,10 @@ function overview(ws) {
         status(stateLabel[s.state], stateVariant[s.state]))))),
     section('Needs your attention', null, attentionList(ws))));
 
+  // The business picture comes before the progress: what the latest analysed discovery found and what it costs.
+  const analysed = ws.discoveries.find((x) => x.analysedAt);
+  if (analysed) nodes.splice(2, 0, businessSnapshot(analysed.id, analysed === d ? 'What discovery found' : `What your discovery of ${fmtDate(analysed.createdAt)} found`));
+
   const all = ws.discoveries;
   nodes.push(section('Key indicators', el('span', { class: 'ws-subtle' }, 'Across all discoveries'),
     el('dl', { class: 'ws-stats' },

@@ -93,7 +93,27 @@ function totals(list, s) {
       stat('Problems found', String(s.total), `${s.prioritised} ranked, ${s.total - s.prioritised} not ranked yet`),
       stat('Waiting for your decision', String(s.readyForReview), null),
       stat('Approved', String(s.approved), null)),
-    sized.length < s.total ? el('p', { class: 'ds-help' }, `Totals cover only the ${of} problems where someone has said how often it happens and how long it takes. The rest show “Not given yet” below.`) : null);
+    sized.length < s.total ? el('p', { class: 'ds-help' }, `Totals cover only the ${of} problems where someone has said how often it happens and how long it takes. Nobody has given figures for the rest yet.`) : null);
+}
+
+// The business picture for one analysed discovery, for the overview pages: the same totals as the
+// opportunities page, then the top three priorities with what each costs. Loads on its own, so a slow
+// response never holds up the rest of the page.
+function businessSnapshot(discoveryId, title = 'What discovery found') {
+  const body = el('div', { class: 'ds-stack' }, el('p', { class: 'ds-loading' }, 'Loading the figures…'));
+  api(`/api/firm/discoveries/${discoveryId}/opportunities`).then((intel) => {
+    const list = intel.opportunities, top = list.filter((o) => o.priorityRank !== null).slice(0, 3);
+    if (!list.length) { body.replaceChildren(el('p', { class: 'ds-muted ds-body-sm' }, 'The analysis didn’t find any problems to report yet.')); return; }
+    const t = (o) => (o.businessCase ? o.businessCase.timeRecovered : {});
+    body.replaceChildren(totals(list, intel.summary),
+      top.length ? el('div', {}, el('h3', { class: 'ds-h4' }, 'Top priorities'), el('ol', { class: 'ws-list ov-top' }, ...top.map((o) => el('li', {},
+        el('span', { class: 'ds-stack ov-top__main' }, el('span', { class: 'ds-cluster' }, el('a', { href: oUrl(discoveryId, o.id) }, o.title), classification(o.classification)),
+          el('span', { class: 'ws-subtle' }, t(o).monthlyHoursSpent === null || t(o).monthlyHoursSpent === undefined ? 'Staff time not given yet'
+            : `${num(t(o).monthlyHoursSpent)} staff hours a month${t(o).monthlyHoursRecovered !== null ? ` · about ${num(t(o).monthlyHoursRecovered)} could be freed up` : ' · how much could be saved not estimated yet'}${t(o).valueAtStatedCostGBP ? ` (≈ ${gbp(t(o).valueAtStatedCostGBP * 12)} a year in staff time)` : ''}`)),
+        oppStatus(o.status))))) : null,
+      el('p', {}, linkBtn(`/app/opportunities?d=${discoveryId}`, 'See all opportunities')));
+  }).catch((err) => body.replaceChildren(alertBox('danger', 'Couldn’t load the figures', err.message)));
+  return section(title, el('span', { class: 'ws-subtle' }, 'From your team’s interviews'), body);
 }
 
 // The report and bulk-approval controls from Phase 2, loaded only when opened.

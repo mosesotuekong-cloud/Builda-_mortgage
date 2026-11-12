@@ -97,6 +97,7 @@ function overviewTab(ws, dw) {
   return [
     el('div', { class: 'ws-next' }, el('div', { class: 'ws-next__text' }, el('p', { class: 'ds-eyebrow' }, 'Recommended next action'), el('h2', { class: 'ws-next__title' }, title), el('p', { class: 'ds-muted ds-body-sm' }, text)),
       href ? linkBtn(href, label, 'primary') : null),
+    d.analysedAt ? businessSnapshot(id) : null,
     el('div', { class: 'ws-section' }, actionsBar(dw)),
     el('div', { class: 'ws-grid-2' },
       section('Progress', null, el('ol', { class: 'ws-steps' }, ...steps.map(([t, done, active, detail, link], i) => {

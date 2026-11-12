@@ -198,6 +198,9 @@
 .op-stat__note { margin: 2px 0 0; font-size: var(--ds-text-sm); }
 .op-stats .ws-stat { align-content: start; }
 .dw-stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ov-top { margin-top: var(--ds-space-2); }
+.ov-top li { display: flex; justify-content: space-between; align-items: start; gap: var(--ds-space-4); }
+.ov-top__main { gap: 2px; }
 .dw-stats .ws-stat { align-content: start; }
 .dw-stat__note { margin: 2px 0 0; font-size: var(--ds-text-sm); }
 .dw-cross { margin: var(--ds-space-5) 0 var(--ds-space-6); align-items: start; }
